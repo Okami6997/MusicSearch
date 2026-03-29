@@ -1,4 +1,4 @@
-# SongsFetch
+# MusicSearch
 
 A web-based music search and download application. Search Qobuz or paste any music platform URL, then download audio from Tidal, Spotify, Qobuz, Amazon Music, or YouTube Music with embedded metadata, cover art, lyrics, and genre info.
 
@@ -46,7 +46,7 @@ docker compose up --build
 ### Multi-architecture build (AMD64 + ARM64)
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 -t songsfetch:latest .
+docker buildx build --platform linux/amd64,linux/arm64 -t musicsearch:latest .
 ```
 
 Downloaded music is saved to the `./music` directory (or `/music` inside the container).
@@ -57,7 +57,7 @@ Settings are available via the web UI (gear icon):
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| Download Directory | Any writable path | `~/Music/SongsFetch` |
+| Download Directory | Any writable path | `~/Music/MusicSearch` |
 | Preferred Source | Tidal, Spotify, Qobuz, Amazon, YouTube | Tidal |
 | Quality | Lossless (16-bit), Hi-Res (24-bit) | Lossless |
 | Embed Lyrics | On/Off | On |
