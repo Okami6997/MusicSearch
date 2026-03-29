@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -49,3 +49,16 @@ jobs:
             ghcr.io/${{ steps.lower.outputs.owner }}/musicsearch:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Save image as tarball
+        run: |
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/musicsearch:latest
+          docker save ${{ secrets.DOCKERHUB_USERNAME }}/musicsearch:latest | gzip > musicsearch.tar.gz
+
+      - name: Upload tarball as release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          files: musicsearch.tar.gz
+          make_latest: true
