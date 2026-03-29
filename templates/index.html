@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SongsFetch</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+<div id="app">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <h1 class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+                SongsFetch
+            </h1>
+        </div>
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-page="search">Search</button>
+            <button class="nav-tab" data-page="files">Files</button>
+            <button class="nav-tab" data-page="analysis">Analysis</button>
+            <button class="nav-tab" data-page="resample">Resample</button>
+            <button class="nav-tab" data-page="history">History</button>
+        </nav>
+        <div class="header-right">
+            <button id="btn-queue" class="icon-btn" title="Download Queue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span id="queue-badge" class="badge hidden">0</span>
+            </button>
+            <button id="btn-settings" class="icon-btn" title="Settings">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+
+        <!-- ═══ Search Page ═══ -->
+        <div id="page-search" class="page active">
+            <div class="search-section">
+                <div class="tab-bar">
+                    <button class="tab active" data-tab="search-query">Search Qobuz</button>
+                    <button class="tab" data-tab="search-url">Paste URL</button>
+                </div>
+                <div id="tab-search-query" class="tab-content active">
+                    <div class="search-bar">
+                        <input type="text" id="search-input" placeholder="Search for songs by title, artist, or ISRC..." autocomplete="off">
+                        <button id="btn-search" class="btn-primary">Search</button>
+                    </div>
+                </div>
+                <div id="tab-search-url" class="tab-content">
+                    <div class="search-bar">
+                        <input type="text" id="url-input" placeholder="Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music...)" autocomplete="off">
+                        <button id="btn-resolve" class="btn-primary">Resolve</button>
+                    </div>
+                    <p class="hint">Supported: Tidal, Amazon Music, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud</p>
+                </div>
+            </div>
+
+            <!-- Search Results -->
+            <div id="search-results" class="results hidden">
+                <div id="results-tracks" class="result-group">
+                    <h2>Tracks</h2>
+                    <div id="tracks-list" class="tracks-grid"></div>
+                </div>
+            </div>
+
+            <!-- URL Resolve Results -->
+            <div id="resolve-results" class="resolve-card hidden">
+                <h3>Platform Availability</h3>
+                <div id="platform-list" class="platform-grid"></div>
+                <div id="resolve-actions" class="resolve-actions"></div>
+            </div>
+
+            <!-- Loading / Empty -->
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <span>Searching...</span>
+            </div>
+            <div id="empty" class="empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <p>Search Qobuz or paste any music platform URL</p>
+            </div>
+        </div>
+
+        <!-- ═══ Files Page ═══ -->
+        <div id="page-files" class="page hidden">
+            <h2>File Manager</h2>
+            <div class="toolbar">
+                <input type="text" id="files-path" class="path-input" placeholder="Directory path...">
+                <button id="btn-load-files" class="btn-primary">Load</button>
+            </div>
+            <div id="files-list" class="files-list">
+                <p class="text-muted">Enter a directory path and click Load.</p>
+            </div>
+            <div id="file-detail" class="file-detail hidden"></div>
+            <div class="toolbar" style="margin-top:12px">
+                <input type="text" id="rename-format" class="path-input" value="{track} {title} - {artist}" placeholder="Rename format...">
+                <button id="btn-preview-rename" class="btn-ghost">Preview Rename</button>
+                <button id="btn-rename" class="btn-primary" disabled>Rename</button>
+            </div>
+            <div id="rename-preview" class="rename-preview hidden"></div>
+        </div>
+
+        <!-- ═══ Analysis Page ═══ -->
+        <div id="page-analysis" class="page hidden">
+            <h2>Audio Analysis</h2>
+            <div class="toolbar">
+                <input type="text" id="analysis-path" class="path-input" placeholder="Audio file path...">
+                <button id="btn-analyze" class="btn-primary">Analyze</button>
+            </div>
+            <div id="analysis-result" class="analysis-result hidden"></div>
+        </div>
+
+        <!-- ═══ Resample Page ═══ -->
+        <div id="page-resample" class="page hidden">
+            <h2>Audio Resampler</h2>
+            <div class="toolbar">
+                <input type="text" id="resample-dir" class="path-input" placeholder="Directory with audio files...">
+                <button id="btn-load-resample" class="btn-primary">Load Files</button>
+            </div>
+            <div id="resample-files" class="files-list"></div>
+            <div class="resample-options" style="margin-top:12px">
+                <div class="settings-group" style="display:inline-block;margin-right:16px">
+                    <label>Sample Rate</label>
+                    <select id="resample-rate" class="settings-input" style="width:auto">
+                        <option value="">Keep</option>
+                        <option value="44100">44.1 kHz</option>
+                        <option value="48000">48 kHz</option>
+                        <option value="96000">96 kHz</option>
+                        <option value="192000">192 kHz</option>
+                    </select>
+                </div>
+                <div class="settings-group" style="display:inline-block;margin-right:16px">
+                    <label>Bit Depth</label>
+                    <select id="resample-bits" class="settings-input" style="width:auto">
+                        <option value="">Keep</option>
+                        <option value="16">16-bit</option>
+                        <option value="24">24-bit</option>
+                    </select>
+                </div>
+                <button id="btn-resample" class="btn-primary" disabled>Resample</button>
+            </div>
+            <div id="resample-result" class="resample-result hidden"></div>
+        </div>
+
+        <!-- ═══ History Page ═══ -->
+        <div id="page-history" class="page hidden">
+            <h2>Download History</h2>
+            <button id="btn-clear-history" class="btn-ghost" style="margin-bottom:12px">Clear History</button>
+            <div id="history-list" class="tracks-grid">
+                <p class="text-muted">No downloads yet.</p>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Queue Modal -->
+<div id="queue-modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Download Queue</h2>
+            <button id="btn-close-queue" class="icon-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="queue-list" class="queue-list">
+                <p class="empty-queue">No downloads yet</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="btn-clear-queue" class="btn-ghost">Clear Completed</button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settings-modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Settings</h2>
+            <button id="btn-close-settings" class="icon-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Download Directory</label>
+                <input type="text" id="setting-dir" class="settings-input" placeholder="~/Music/SongsFetch">
+            </div>
+            <div class="settings-group">
+                <label>Preferred Source</label>
+                <select id="setting-source" class="settings-input">
+                    <option value="tidal">Tidal</option>
+                    <option value="qobuz">Qobuz</option>
+                    <option value="amazon">Amazon Music</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label>Quality</label>
+                <select id="setting-quality" class="settings-input">
+                    <option value="LOSSLESS">Lossless (FLAC 16-bit)</option>
+                    <option value="HI_RES">Hi-Res (FLAC 24-bit)</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="setting-lyrics" checked>
+                    Embed lyrics
+                </label>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="btn-save-settings" class="btn-primary">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container" class="toast-container"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

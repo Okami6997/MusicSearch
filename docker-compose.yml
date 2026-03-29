@@ -1,0 +1,11 @@
+services:
+  songsfetch:
+    build: .
+    container_name: songsfetch
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./music:/music
+    environment:
+      - SONGSFETCH_OUTPUT_DIR=/music
+    restart: unless-stopped
