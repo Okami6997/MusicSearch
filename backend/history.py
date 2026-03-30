@@ -18,8 +18,29 @@ def init_db(db_path: str = "") -> None:
         return
 
     if not db_path:
-        data_dir = os.environ.get("SONGSFETCH_DATA_DIR") or os.environ.get("SONGSFETCH_OUTPUT_DIR") or os.path.join(os.path.expanduser("~"), ".songsfetch")
-        os.makedirs(data_dir, exist_ok=True)
+        candidates = [
+            os.environ.get("SONGSFETCH_DATA_DIR"),
+            os.environ.get("SONGSFETCH_OUTPUT_DIR"),
+            os.path.join(os.path.expanduser("~"), ".songsfetch"),
+            "/tmp/songsfetch",
+        ]
+        data_dir = None
+        for d in candidates:
+            if not d:
+                continue
+            try:
+                os.makedirs(d, exist_ok=True)
+                # Verify we can actually write here
+                test_path = os.path.join(d, ".write_test")
+                with open(test_path, "w") as f:
+                    f.write("ok")
+                os.remove(test_path)
+                data_dir = d
+                break
+            except OSError:
+                continue
+        if data_dir is None:
+            raise RuntimeError("No writable directory found for history database")
         db_path = os.path.join(data_dir, "history.db")
 
     _db = sqlite3.connect(db_path, check_same_thread=False)
