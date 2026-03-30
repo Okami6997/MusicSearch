@@ -18,7 +18,7 @@ def init_db(db_path: str = "") -> None:
         return
 
     if not db_path:
-        data_dir = os.path.join(os.path.expanduser("~"), ".songsfetch")
+        data_dir = os.environ.get("SONGSFETCH_DATA_DIR") or os.environ.get("SONGSFETCH_OUTPUT_DIR") or os.path.join(os.path.expanduser("~"), ".songsfetch")
         os.makedirs(data_dir, exist_ok=True)
         db_path = os.path.join(data_dir, "history.db")
 

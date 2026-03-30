@@ -13,13 +13,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /music /home/songsfetch/.songsfetch && \
-    chown songsfetch:songsfetch /music /home/songsfetch/.songsfetch
+RUN mkdir -p /music /data && \
+    chown songsfetch:songsfetch /music /data
 
 USER songsfetch
 
 ENV PYTHONUNBUFFERED=1
 ENV SONGSFETCH_OUTPUT_DIR=/music
+ENV SONGSFETCH_DATA_DIR=/data
 
 EXPOSE 3000
 
