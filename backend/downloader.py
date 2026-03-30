@@ -169,6 +169,11 @@ class DownloadManager:
                 # ISRC only — Qobuz can search by ISRC; try SongLink too
                 links["isrc"] = isrc
 
+            # If we have title+artist but no links at all, ensure YouTube can search
+            if task.title and task.artist:
+                links.setdefault("title", task.title)
+                links.setdefault("artist", task.artist)
+
             task.isrc = isrc
             task.status = DownloadStatus.DOWNLOADING
             self._notify(task)

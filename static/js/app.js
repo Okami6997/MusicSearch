@@ -25,9 +25,9 @@
     $$(".nav-tab").forEach((tab) => {
         tab.addEventListener("click", () => {
             $$(".nav-tab").forEach((t) => t.classList.remove("active"));
-            $$(".page").forEach((p) => p.classList.add("hidden"));
+            $$(".page").forEach((p) => p.classList.remove("active"));
             tab.classList.add("active");
-            $(`#page-${tab.dataset.page}`).classList.remove("hidden");
+            $(`#page-${tab.dataset.page}`).classList.add("active");
             if (tab.dataset.page === "history") loadHistory();
         });
     });
@@ -187,13 +187,33 @@
             list.innerHTML = '<p class="text-muted">No audio files found.</p>';
             return;
         }
-        list.innerHTML = files.map((f) => `
-            <div class="file-row" onclick="window.sfShowFileMeta('${esc(f.path)}')">
+        list.innerHTML = `<div class="file-row file-select-all">
+                <label class="checkbox-label"><input type="checkbox" id="select-all-files" checked> <strong>Select All</strong></label>
+            </div>` +
+            files.map((f, i) => `
+            <div class="file-row">
+                <label class="checkbox-label" style="flex-shrink:0">
+                    <input type="checkbox" class="file-check" data-index="${i}" checked>
+                </label>
                 <span class="file-icon">♪</span>
-                <span class="file-name">${esc(f.name)}</span>
+                <span class="file-name" onclick="window.sfShowFileMeta('${esc(f.path)}')" style="cursor:pointer">${esc(f.name)}</span>
                 <span class="file-size">${fmtSize(f.size)}</span>
             </div>
         `).join("");
+
+        // Select-all toggle
+        $("#select-all-files").addEventListener("change", (e) => {
+            $$(".file-check").forEach((cb) => cb.checked = e.target.checked);
+        });
+    }
+
+    function getSelectedFiles() {
+        const checks = $$("#files-list .file-check");
+        const selected = [];
+        checks.forEach((cb) => {
+            if (cb.checked) selected.push(loadedAudioFiles[parseInt(cb.dataset.index)]);
+        });
+        return selected;
     }
 
     window.sfShowFileMeta = async function (path) {
@@ -222,13 +242,14 @@
     };
 
     async function previewRename() {
-        if (!loadedAudioFiles.length) { toast("Load files first", "error"); return; }
+        const selected = getSelectedFiles();
+        if (!selected.length) { toast("Select files first", "error"); return; }
         const fmt = $("#rename-format").value.trim();
         try {
             const resp = await fetch("/api/files/rename/preview", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ files: loadedAudioFiles, format: fmt }),
+                body: JSON.stringify({ files: selected, format: fmt }),
             });
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
@@ -244,13 +265,14 @@
     }
 
     async function doRename() {
-        if (!loadedAudioFiles.length) return;
+        const selected = getSelectedFiles();
+        if (!selected.length) return;
         const fmt = $("#rename-format").value.trim();
         try {
             const resp = await fetch("/api/files/rename", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ files: loadedAudioFiles, format: fmt }),
+                body: JSON.stringify({ files: selected, format: fmt }),
             });
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
@@ -375,6 +397,7 @@
                     <div class="track-info">
                         <div class="track-title">${esc(h.title || h.url || 'Unknown')}</div>
                         <div class="track-artist">${esc(h.artist)}${h.source ? ' · via ' + esc(h.source) : ''}</div>
+                        ${h.path ? `<div class="track-meta">${esc(h.path)}</div>` : ''}
                     </div>
                     <span class="track-duration">${esc(h.quality)} ${esc(h.format)}</span>
                 </div>
@@ -417,6 +440,7 @@
                     <div class="queue-title">${esc(t.title || t.url || t.isrc)}</div>
                     <div class="queue-status">${statusText(t)}</div>
                     ${t.status === "downloading" ? `<div class="queue-progress"><div class="queue-progress-bar" style="width:${t.progress}%"></div></div>` : ""}
+                    ${t.status === "completed" && t.output_path ? `<div class="queue-path">${esc(t.output_path)}</div>` : ""}
                 </div>
             </div>
         `).join("");
@@ -450,7 +474,11 @@
         else queueData.push(data);
         if (!queueModal.classList.contains("hidden")) renderQueue();
         updateQueueBadge();
-        if (data.status === "completed") toast(`"${data.title || data.url}" downloaded`, "success");
+        if (data.status === "completed") {
+            toast(`"${data.title || data.url}" downloaded`, "success");
+            // Refresh history if on history page
+            if ($("#page-history").classList.contains("active")) loadHistory();
+        }
         if (data.status === "failed") toast(`"${data.title || data.url}" failed: ${data.error}`, "error");
     });
 
@@ -487,6 +515,21 @@
             toast(e.message, "error");
         }
     });
+
+    // ── Auto-fill download directory in tabs ─────────────────
+    async function fillDownloadDir() {
+        try {
+            const resp = await fetch("/api/settings");
+            const s = await resp.json();
+            const dir = s.output_dir || "";
+            if (dir) {
+                if ($("#files-path") && !$("#files-path").value) $("#files-path").value = dir;
+                if ($("#analysis-path") && !$("#analysis-path").value) $("#analysis-path").value = dir;
+                if ($("#resample-dir") && !$("#resample-dir").value) $("#resample-dir").value = dir;
+            }
+        } catch (e) { /* ignore */ }
+    }
+    fillDownloadDir();
 
     // ── Helpers ──────────────────────────────────────────────
     function showLoading() { hideAll(); loading.classList.remove("hidden"); }

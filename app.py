@@ -6,16 +6,25 @@ from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import requests as http_requests
+
 from backend.songlink import SongLinkClient, is_music_url, parse_music_url
 from backend.lyrics import LyricsClient
 from backend.downloader import DownloadManager
 from backend.musicbrainz import MusicBrainzClient
 from backend import analysis, resample, filemanager, history
 
+try:
+    import eventlet
+    eventlet.monkey_patch()
+    _async_mode = "eventlet"
+except Exception:
+    _async_mode = "threading"
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(32).hex()
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet", ping_timeout=60)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=_async_mode, ping_timeout=60)
 
 # ── Global state ─────────────────────────────────────────────
 
@@ -94,42 +103,84 @@ def resolve_url():
 
 @app.route("/api/search", methods=["GET"])
 def search():
-    """Search Qobuz by query or ISRC."""
+    """Search for tracks by query or ISRC."""
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify({"error": "Query required"}), 400
+
+    # If it looks like an ISRC, search by ISRC via Qobuz
+    if len(q) == 12 and q[:2].isalpha() and q[2:].isalnum():
+        try:
+            from backend.qobuz import QobuzDownloader
+            qobuz = QobuzDownloader()
+            track = qobuz.search_by_isrc(q)
+            # Normalize to frontend-expected format
+            track.setdefault("cover_url", "")
+            track["duration_ms"] = (track.pop("duration", 0) or 0) * 1000
+            return jsonify({"tracks": [track], "source": "qobuz"})
+        except Exception:
+            pass
+
+    # Try Qobuz search first
     try:
         from backend.qobuz import QobuzDownloader
         qobuz = QobuzDownloader()
-        # If it looks like an ISRC, search by ISRC
-        if len(q) == 12 and q[:2].isalpha() and q[2:].isalnum():
-            track = qobuz.search_by_isrc(q)
-            return jsonify({"tracks": [track], "source": "qobuz"})
-        # Otherwise search Qobuz by query
         resp = qobuz.session.get(
-            f"https://www.qobuz.com/api.json/0.2/track/search"
-            f"?query={q}&limit=20&app_id={qobuz.APP_ID}",
-            timeout=30,
+            "https://www.qobuz.com/api.json/0.2/track/search",
+            params={"query": q, "limit": 20, "app_id": qobuz.APP_ID},
+            timeout=15,
         )
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
+        if items:
+            tracks = []
+            for t in items:
+                tracks.append({
+                    "id": t.get("id"),
+                    "title": t.get("title", ""),
+                    "artist": t.get("performer", {}).get("name", ""),
+                    "album": t.get("album", {}).get("title", ""),
+                    "cover_url": t.get("album", {}).get("image", {}).get("large", ""),
+                    "duration_ms": (t.get("duration", 0) or 0) * 1000,
+                    "isrc": t.get("isrc", ""),
+                    "hires": t.get("hires_streamable", False),
+                    "bit_depth": t.get("maximum_bit_depth", 0),
+                    "sample_rate": t.get("maximum_sampling_rate", 0),
+                })
+            return jsonify({"tracks": tracks, "source": "qobuz"})
+    except Exception:
+        pass
+
+    # Fallback: iTunes Search API (free, no auth required)
+    try:
+        itunes_resp = http_requests.get(
+            "https://itunes.apple.com/search",
+            params={"term": q, "media": "music", "entity": "song", "limit": 20},
+            timeout=15,
+        )
+        itunes_resp.raise_for_status()
+        results = itunes_resp.json().get("results", [])
         tracks = []
-        for t in items:
+        for t in results:
+            artwork = t.get("artworkUrl100", "")
+            # Get higher-res artwork
+            if artwork:
+                artwork = artwork.replace("100x100bb", "600x600bb")
             tracks.append({
-                "id": t.get("id"),
-                "title": t.get("title", ""),
-                "artist": t.get("performer", {}).get("name", ""),
-                "album": t.get("album", {}).get("title", ""),
-                "cover_url": t.get("album", {}).get("image", {}).get("large", ""),
-                "duration_ms": (t.get("duration", 0) or 0) * 1000,
-                "isrc": t.get("isrc", ""),
-                "hires": t.get("hires_streamable", False),
-                "bit_depth": t.get("maximum_bit_depth", 0),
-                "sample_rate": t.get("maximum_sampling_rate", 0),
+                "id": t.get("trackId"),
+                "title": t.get("trackName", ""),
+                "artist": t.get("artistName", ""),
+                "album": t.get("collectionName", ""),
+                "cover_url": artwork,
+                "duration_ms": t.get("trackTimeMillis", 0) or 0,
+                "isrc": "",
+                "hires": False,
+                "bit_depth": 0,
+                "sample_rate": 0,
             })
-        return jsonify({"tracks": tracks, "source": "qobuz"})
+        return jsonify({"tracks": tracks, "source": "itunes"})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Search failed: {str(e)}"}), 500
 
 
 @app.route("/api/availability", methods=["GET"])
@@ -179,12 +230,14 @@ def download():
     body = request.get_json(silent=True) or {}
     url = body.get("url", "").strip()
     isrc = body.get("isrc", "").strip()
-    if not url and not isrc:
-        return jsonify({"error": "url or isrc required"}), 400
+    title = body.get("title", "").strip()
+    artist = body.get("artist", "").strip()
+    if not url and not isrc and not (title and artist):
+        return jsonify({"error": "url, isrc, or title+artist required"}), 400
     task_id = download_manager.add_track(
         url=url, isrc=isrc,
-        title=body.get("title", ""),
-        artist=body.get("artist", ""),
+        title=title,
+        artist=artist,
         album=body.get("album", ""),
         cover_url=body.get("cover_url", ""),
         duration_ms=int(body.get("duration_ms", 0)),
@@ -419,4 +472,4 @@ def on_connect():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=8080, debug=False)
+    socketio.run(app, host="0.0.0.0", port=3000, debug=True)
