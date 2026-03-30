@@ -20,6 +20,6 @@ USER songsfetch
 ENV PYTHONUNBUFFERED=1
 ENV SONGSFETCH_OUTPUT_DIR=/music
 
-EXPOSE 8080
+EXPOSE 3000
 
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:8080", "app:app"]
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:3000", "app:app"]
