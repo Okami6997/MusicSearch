@@ -4,6 +4,7 @@ import os
 
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from backend.songlink import SongLinkClient, is_music_url, parse_music_url
 from backend.lyrics import LyricsClient
@@ -13,7 +14,8 @@ from backend import analysis, resample, filemanager, history
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(32).hex()
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet", ping_timeout=60)
 
 # ── Global state ─────────────────────────────────────────────
 
@@ -48,6 +50,14 @@ def _on_progress(task_data: dict):
 
 _init_download_manager()
 history.init_db()
+
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
 
 
 # ── Routes ───────────────────────────────────────────────────
