@@ -1,19 +1,20 @@
 # MusicSearch
 
-A web-based music search and download application. Search Qobuz or paste any music platform URL, then download audio from Tidal, Spotify, Qobuz, Amazon Music, or YouTube Music with embedded metadata, cover art, lyrics, and genre info.
+A web-based music search and download application. Search or paste any music platform URL, then download audio from Tidal, Spotify, Qobuz, Amazon Music, or YouTube Music with embedded metadata, cover art, lyrics, and genre info — optimized for Navidrome and Lidarr compatibility.
 
 ## Features
 
-- **Qobuz Search** — Search by title, artist, or ISRC across Qobuz's catalog
+- **Music Search** — Search by title, artist, or ISRC across Qobuz with iTunes fallback
 - **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Qobuz, Amazon Music, and YouTube Music with automatic failover
 - **Lossless Audio** — FLAC (16-bit and 24-bit Hi-Res) from Tidal/Qobuz/Amazon; MP3 320kbps fallback from YouTube
-- **Metadata Embedding** — Title, artist, album, track number, cover art, ISRC, genre (MusicBrainz), and label
+- **Rich Metadata Embedding** — Title, artist, album, album artist, track number, disc number, total tracks, year, genre (MusicBrainz), label, ISRC, and cover art
 - **Lyrics** — Synced (LRC) and plain lyrics from LRCLIB, embedded into files
+- **Navidrome/Lidarr Compatible** — Full metadata embedding ensures downloaded tracks are recognized by media servers
 - **Audio Analysis** — Analyze audio files for codec, sample rate, bit depth, duration, and bitrate (FFprobe)
 - **Audio Resampling** — Change sample rate and bit depth of audio files (FFmpeg), with batch processing
 - **File Manager** — Browse audio files, view metadata, and batch rename using format templates
-- **Download History** — SQLite-based history of all downloads
+- **Operation History** — SQLite-based history tracking downloads, resampling, renaming, and analysis operations
 - **Download Validation** — Duration-based validation to detect preview/sample files
 - **Real-time Progress** — WebSocket-based download queue with live progress updates
 - **Dark UI** — Clean, responsive dark-themed web interface with tabbed navigation
@@ -33,7 +34,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Open http://localhost:8080 in your browser.
+Open http://localhost:3000 in your browser.
 
 ## Docker
 
@@ -57,7 +58,7 @@ Settings are available via the web UI (gear icon):
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| Download Directory | Any writable path | `~/Music/MusicSearch` |
+| Download Directory | Any writable path | `~/Music/SongsFetch` |
 | Preferred Source | Tidal, Spotify, Qobuz, Amazon, YouTube | Tidal |
 | Quality | Lossless (16-bit), Hi-Res (24-bit) | Lossless |
 | Embed Lyrics | On/Off | On |
@@ -70,7 +71,7 @@ Settings are available via the web UI (gear icon):
 | GET | `/api/resolve?url=...` | Resolve any music URL via SongLink |
 | GET | `/api/availability?url=...` | Check platform availability |
 | GET | `/api/lyrics?track=...&artist=...` | Fetch lyrics from LRCLIB |
-| GET | `/api/musicbrainz?isrc=...` | Look up genre/label by ISRC |
+| GET | `/api/musicbrainz?isrc=...` | Look up genre/label/year by ISRC |
 | POST | `/api/download` | Download a track (url or isrc) |
 | POST | `/api/download/batch` | Download multiple tracks |
 | GET | `/api/queue` | Get download queue |
@@ -86,6 +87,8 @@ Settings are available via the web UI (gear icon):
 | POST | `/api/files/rename` | Execute batch rename |
 | GET | `/api/history/downloads` | Get download history |
 | POST | `/api/history/downloads/clear` | Clear download history |
+| GET | `/api/history/operations` | Get operation history (resample, analyze, rename) |
+| POST | `/api/history/operations/clear` | Clear operation history |
 | GET/POST | `/api/settings` | Get/update settings |
 
 ## Project Structure
@@ -105,11 +108,11 @@ MusicSearch/
 │   ├── youtube.py          # YouTube Music downloader (MP3 via proxy APIs)
 │   ├── metadata.py         # FLAC/MP3/M4A metadata embedding (mutagen)
 │   ├── lyrics.py           # LRCLIB lyrics client
-│   ├── musicbrainz.py      # MusicBrainz genre/label lookup
+│   ├── musicbrainz.py      # MusicBrainz genre/label/year lookup
 │   ├── analysis.py         # Audio analysis (FFprobe)
 │   ├── resample.py         # Audio resampling (FFmpeg)
 │   ├── filemanager.py      # File listing, metadata reading, batch rename
-│   ├── history.py          # Download history (SQLite)
+│   ├── history.py          # Download & operation history (SQLite)
 │   └── downloader.py       # Download orchestrator & queue
 ├── templates/
 │   └── index.html          # Web UI
@@ -118,9 +121,14 @@ MusicSearch/
     └── js/app.js           # Frontend JavaScript
 ```
 
-## License
+## Media Server Integration
 
-MIT
+MusicSearch is designed to work seamlessly with Navidrome and Lidarr:
+
+- **Navidrome**: Downloaded tracks appear in your library after a scan. The rich metadata embedding ensures proper artist/album/track organization.
+- **Lidarr**: Lidarr can monitor your download folder and automatically organize tracks. The embedded metadata (ISRC, genre, year) helps with identification.
+
+Point your media server to the same download directory configured in MusicSearch settings.
 
 ## License
 

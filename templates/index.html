@@ -42,7 +42,7 @@
         <div id="page-search" class="page active">
             <div class="search-section">
                 <div class="tab-bar">
-                    <button class="tab active" data-tab="search-query">Search Qobuz</button>
+                    <button class="tab active" data-tab="search-query">Search</button>
                     <button class="tab" data-tab="search-url">Paste URL</button>
                 </div>
                 <div id="tab-search-query" class="tab-content active">
@@ -82,7 +82,7 @@
             </div>
             <div id="empty" class="empty-state">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <p>Search Qobuz or paste any music platform URL</p>
+                <p>Search or paste any music platform URL</p>
             </div>
         </div>
 
@@ -109,10 +109,14 @@
         <div id="page-analysis" class="page">
             <h2>Audio Analysis</h2>
             <div class="toolbar">
-                <input type="text" id="analysis-path" class="path-input" placeholder="Audio file path...">
-                <button id="btn-analyze" class="btn-primary">Analyze</button>
+                <input type="text" id="analysis-path" class="path-input" placeholder="Directory path...">
+                <button id="btn-load-analysis" class="btn-primary">Load Files</button>
             </div>
-            <div id="analysis-result" class="analysis-result hidden"></div>
+            <div id="analysis-files" class="files-list"></div>
+            <div class="toolbar" style="margin-top:12px">
+                <button id="btn-analyze-selected" class="btn-primary" disabled>Analyze Selected</button>
+            </div>
+            <div id="analysis-results" class="analysis-results"></div>
         </div>
 
         <!-- ═══ Resample Page ═══ -->

@@ -73,6 +73,15 @@ def init_db(db_path: str = "") -> None:
             timestamp INTEGER DEFAULT 0
         )
     """)
+    _db.execute("""
+        CREATE TABLE IF NOT EXISTS operations_history (
+            id TEXT PRIMARY KEY,
+            operation TEXT DEFAULT '',
+            files TEXT DEFAULT '',
+            details TEXT DEFAULT '',
+            timestamp INTEGER DEFAULT 0
+        )
+    """)
     _db.commit()
 
 
@@ -169,6 +178,40 @@ def clear_fetches_by_type(item_type: str) -> None:
     _ensure_db()
     with _lock:
         _db.execute("DELETE FROM fetch_history WHERE type = ?", (item_type,))
+        _db.commit()
+
+
+def add_operation(operation: str, files: list, details: str = "") -> str:
+    """Add an operation (resample, analyze, rename) to history."""
+    _ensure_db()
+    item_id = f"{int(time.time() * 1e9)}-{os.getpid()}"
+    with _lock:
+        _db.execute(
+            """INSERT INTO operations_history
+               (id, operation, files, details, timestamp)
+               VALUES (?, ?, ?, ?, ?)""",
+            (item_id, operation, json.dumps(files), details, int(time.time())),
+        )
+        _trim_table("operations_history")
+        _db.commit()
+    return item_id
+
+
+def get_operations() -> list[dict]:
+    """Get all operation history items, newest first."""
+    _ensure_db()
+    with _lock:
+        rows = _db.execute(
+            "SELECT * FROM operations_history ORDER BY timestamp DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def clear_operations() -> None:
+    """Clear all operation history."""
+    _ensure_db()
+    with _lock:
+        _db.execute("DELETE FROM operations_history")
         _db.commit()
 
 

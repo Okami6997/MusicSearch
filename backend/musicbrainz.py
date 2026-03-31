@@ -58,6 +58,11 @@ class MusicBrainzClient:
                     if label_name:
                         result["publisher"] = label_name
                         break
+                # Extract year from release date
+                if "date" in release and not result.get("year"):
+                    date_str = release.get("date", "")
+                    if date_str and len(date_str) >= 4:
+                        result["year"] = date_str[:4]
 
         return result
 

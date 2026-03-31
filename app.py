@@ -135,17 +135,21 @@ def search():
         if items:
             tracks = []
             for t in items:
+                album_data = t.get("album", {})
                 tracks.append({
                     "id": t.get("id"),
                     "title": t.get("title", ""),
                     "artist": t.get("performer", {}).get("name", ""),
-                    "album": t.get("album", {}).get("title", ""),
-                    "cover_url": t.get("album", {}).get("image", {}).get("large", ""),
+                    "album": album_data.get("title", ""),
+                    "cover_url": album_data.get("image", {}).get("large", ""),
                     "duration_ms": (t.get("duration", 0) or 0) * 1000,
                     "isrc": t.get("isrc", ""),
                     "hires": t.get("hires_streamable", False),
                     "bit_depth": t.get("maximum_bit_depth", 0),
                     "sample_rate": t.get("maximum_sampling_rate", 0),
+                    "track_number": t.get("track_number", 0),
+                    "total_tracks": t.get("album", {}).get("tracks_count", 0),
+                    "disc_number": t.get("media_number", 0) or 1,
                 })
             return jsonify({"tracks": tracks, "source": "qobuz"})
     except Exception:
@@ -241,6 +245,10 @@ def download():
         album=body.get("album", ""),
         cover_url=body.get("cover_url", ""),
         duration_ms=int(body.get("duration_ms", 0)),
+        track_number=int(body.get("track_number", 0)),
+        total_tracks=int(body.get("total_tracks", 0)),
+        disc_number=int(body.get("disc_number", 0)),
+        total_discs=int(body.get("total_discs", 0)),
     )
     return jsonify({"task_id": task_id})
 
@@ -261,6 +269,10 @@ def download_batch():
             album=t.get("album", ""),
             cover_url=t.get("cover_url", ""),
             duration_ms=int(t.get("duration_ms", 0)),
+            track_number=int(t.get("track_number", 0)),
+            total_tracks=int(t.get("total_tracks", 0)),
+            disc_number=int(t.get("disc_number", 0)),
+            total_discs=int(t.get("total_discs", 0)),
         )
         ids.append(task_id)
     return jsonify({"task_ids": ids})
@@ -308,6 +320,8 @@ def analyze_batch():
             results.append(analysis.get_track_metadata(p))
         except Exception as e:
             results.append({"file_path": p, "error": str(e)})
+    # Track in history
+    history.add_operation("analyze", paths, f"Analyzed {len(results)} file(s)")
     return jsonify(results)
 
 
@@ -326,6 +340,13 @@ def resample_files():
         return jsonify({"error": "sample_rate or bit_depth required"}), 400
     try:
         results = resample.resample_audio(files, sample_rate, bit_depth)
+        # Track in history
+        details = []
+        if sample_rate:
+            details.append(f"Sample rate: {sample_rate} Hz")
+        if bit_depth:
+            details.append(f"Bit depth: {bit_depth}-bit")
+        history.add_operation("resample", files, ", ".join(details))
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -404,6 +425,7 @@ def files_rename():
     if not files:
         return jsonify({"error": "files required"}), 400
     data = filemanager.rename_files(files, fmt)
+    history.add_operation("rename", files, f"Format: {fmt}")
     return jsonify(data)
 
 
@@ -428,6 +450,17 @@ def history_fetches():
 @app.route("/api/history/fetches/clear", methods=["POST"])
 def history_fetches_clear():
     history.clear_fetches()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/history/operations", methods=["GET"])
+def history_operations():
+    return jsonify(history.get_operations())
+
+
+@app.route("/api/history/operations/clear", methods=["POST"])
+def history_operations_clear():
+    history.clear_operations()
     return jsonify({"ok": True})
 
 

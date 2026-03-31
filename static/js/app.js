@@ -32,6 +32,13 @@
         });
     });
 
+    // ── Observe page visibility for history ──────────────────
+    const historyPage = $("#page-history");
+    const historyObserver = new MutationObserver(() => {
+        if (historyPage.classList.contains("active")) loadHistory();
+    });
+    historyObserver.observe(historyPage, { attributes: true, attributeFilter: ["class"] });
+
     // ── Search Sub-tabs ─────────────────────────────────────
     $$("#page-search .tab").forEach((tab) => {
         tab.addEventListener("click", () => {
@@ -285,37 +292,97 @@
     }
 
     // ── Analysis ────────────────────────────────────────────
-    $("#btn-analyze").addEventListener("click", doAnalyze);
+    let analysisFiles = [];
+    $("#btn-load-analysis").addEventListener("click", loadAnalysisFiles);
+    $("#btn-analyze-selected").addEventListener("click", analyzeSelectedFiles);
 
-    async function doAnalyze() {
+    async function loadAnalysisFiles() {
         const path = $("#analysis-path").value.trim();
         if (!path) return;
         try {
-            const resp = await fetch("/api/analysis", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path }),
-            });
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(path)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            const el = $("#analysis-result");
-            el.classList.remove("hidden");
-            el.innerHTML = `
-                <div class="analysis-card">
-                    <h3>${esc(data.file_name)}</h3>
-                    <div class="meta-grid">
-                        <div><strong>Codec:</strong> ${esc(data.codec)}</div>
-                        <div><strong>Sample Rate:</strong> ${data.sample_rate ? data.sample_rate + ' Hz' : '-'}</div>
-                        <div><strong>Bit Depth:</strong> ${esc(data.bit_depth)}</div>
-                        <div><strong>Channels:</strong> ${data.channels}</div>
-                        <div><strong>Duration:</strong> ${data.duration ? data.duration + 's' : '-'}</div>
-                        <div><strong>Bit Rate:</strong> ${data.bit_rate ? Math.round(data.bit_rate / 1000) + ' kbps' : '-'}</div>
-                        <div><strong>File Size:</strong> ${fmtSize(data.file_size)}</div>
-                    </div>
-                </div>`;
+            analysisFiles = data.map((f) => f.path);
+            renderAnalysisFiles(data);
         } catch (e) {
             toast(e.message, "error");
         }
+    }
+
+    function renderAnalysisFiles(files) {
+        const list = $("#analysis-files");
+        if (!files.length) {
+            list.innerHTML = '<p class="text-muted">No audio files found.</p>';
+            return;
+        }
+        list.innerHTML = `<div class="file-row file-select-all">
+                <label class="checkbox-label"><input type="checkbox" id="select-all-analysis" checked> <strong>Select All</strong></label>
+            </div>` +
+            files.map((f, i) => `
+            <div class="file-row">
+                <label class="checkbox-label" style="flex-shrink:0">
+                    <input type="checkbox" class="analysis-check" data-index="${i}" checked>
+                </label>
+                <span class="file-icon">♪</span>
+                <span class="file-name">${esc(f.name)}</span>
+                <span class="file-size">${fmtSize(f.size)}</span>
+            </div>
+        `).join("");
+
+        $("#select-all-analysis").addEventListener("change", (e) => {
+            $$(".analysis-check").forEach((cb) => cb.checked = e.target.checked);
+        });
+
+        $("#btn-analyze-selected").disabled = false;
+    }
+
+    function getSelectedAnalysisFiles() {
+        const checks = $$("#analysis-files .analysis-check");
+        const selected = [];
+        checks.forEach((cb) => {
+            if (cb.checked) selected.push(analysisFiles[parseInt(cb.dataset.index)]);
+        });
+        return selected;
+    }
+
+    async function analyzeSelectedFiles() {
+        const selected = getSelectedAnalysisFiles();
+        if (!selected.length) { toast("Select files first", "error"); return; }
+        toast("Analyzing files...", "");
+        try {
+            const resp = await fetch("/api/analysis/batch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ paths: selected }),
+            });
+            const results = await resp.json();
+            renderAnalysisResults(results);
+            toast(`Analyzed ${results.length} files`, "success");
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    }
+
+    function renderAnalysisResults(results) {
+        const el = $("#analysis-results");
+        el.classList.remove("hidden");
+        el.innerHTML = `<table class="rename-table"><thead><tr><th>File</th><th>Codec</th><th>Sample Rate</th><th>Bit Depth</th><th>Channels</th><th>Duration</th><th>Size</th></tr></thead><tbody>` +
+            results.map((r) => {
+                if (r.error) {
+                    return `<tr><td>${esc(r.file_path)}</td><td colspan="6" class="text-danger">${esc(r.error)}</td></tr>`;
+                }
+                return `<tr>
+                    <td>${esc(r.file_name)}</td>
+                    <td>${esc(r.codec || '-')}</td>
+                    <td>${r.sample_rate ? r.sample_rate + ' Hz' : '-'}</td>
+                    <td>${esc(r.bit_depth || '-')}</td>
+                    <td>${r.channels || '-'}</td>
+                    <td>${r.duration ? r.duration + 's' : '-'}</td>
+                    <td>${fmtSize(r.file_size)}</td>
+                </tr>`;
+            }).join("") +
+            `</tbody></table>`;
     }
 
     // ── Resample ────────────────────────────────────────────
@@ -378,20 +445,42 @@
     // ── History ─────────────────────────────────────────────
     $("#btn-clear-history").addEventListener("click", async () => {
         await fetch("/api/history/downloads/clear", { method: "POST" });
+        await fetch("/api/history/operations/clear", { method: "POST" });
         loadHistory();
     });
 
     async function loadHistory() {
         try {
-            const resp = await fetch("/api/history/downloads");
-            const items = await resp.json();
+            const [downloadsResp, opsResp] = await Promise.all([
+                fetch("/api/history/downloads"),
+                fetch("/api/history/operations"),
+            ]);
+            const downloads = await downloadsResp.json();
+            const operations = await opsResp.json();
+
+            const allItems = [
+                ...downloads.map(d => ({ ...d, _type: "download" })),
+                ...operations.map(o => ({ ...o, _type: "operation" })),
+            ].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
             const el = $("#history-list");
-            if (!items.length) {
-                el.innerHTML = '<p class="text-muted">No downloads yet.</p>';
+            if (!allItems.length) {
+                el.innerHTML = '<p class="text-muted">No history yet.</p>';
                 return;
             }
-            el.innerHTML = items.map((h) => `
-                <div class="track-row">
+            el.innerHTML = allItems.map((h) => {
+                if (h._type === "operation") {
+                    const files = JSON.parse(h.files || "[]");
+                    return `<div class="track-row">
+                        <div class="track-info">
+                            <div class="track-title">${esc(h.operation)}</div>
+                            <div class="track-artist">${esc(files.length)} file${files.length !== 1 ? 's' : ''}</div>
+                            ${h.details ? `<div class="track-meta">${esc(h.details)}</div>` : ''}
+                        </div>
+                        <span class="track-duration">${esc(h.operation)}</span>
+                    </div>`;
+                }
+                return `<div class="track-row">
                     <img class="track-cover" src="${esc(h.cover_url || '')}" alt=""
                          onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
                     <div class="track-info">
@@ -400,8 +489,8 @@
                         ${h.path ? `<div class="track-meta">${esc(h.path)}</div>` : ''}
                     </div>
                     <span class="track-duration">${esc(h.quality)} ${esc(h.format)}</span>
-                </div>
-            `).join("");
+                </div>`;
+            }).join("");
         } catch (e) { /* ignore */ }
     }
 
@@ -574,4 +663,6 @@
 
     // Init
     updateQueueBadge();
+    // Load history on init if history page is active
+    if ($("#page-history").classList.contains("active")) loadHistory();
 })();

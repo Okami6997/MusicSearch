@@ -43,6 +43,10 @@ class DownloadTask:
     album: str = ""
     cover_url: str = ""
     duration_ms: int = 0
+    track_number: int = 0
+    total_tracks: int = 0
+    disc_number: int = 0
+    total_discs: int = 0
     status: str = DownloadStatus.QUEUED
     progress: float = 0.0
     error: str = ""
@@ -88,13 +92,17 @@ class DownloadManager:
 
     def add_track(self, url: str = "", isrc: str = "", title: str = "",
                   artist: str = "", album: str = "", cover_url: str = "",
-                  duration_ms: int = 0) -> str:
+                  duration_ms: int = 0, track_number: int = 0,
+                  total_tracks: int = 0, disc_number: int = 0,
+                  total_discs: int = 0) -> str:
         """Add a track to the download queue. Provide URL or ISRC."""
         task_id = str(uuid.uuid4())[:8]
         task = DownloadTask(
             id=task_id, url=url, isrc=isrc,
             title=title or url or isrc, artist=artist,
             album=album, cover_url=cover_url, duration_ms=duration_ms,
+            track_number=track_number, total_tracks=total_tracks,
+            disc_number=disc_number, total_discs=total_discs,
         )
         with self._lock:
             self.tasks[task_id] = task
@@ -302,10 +310,15 @@ class DownloadManager:
     def _embed(self, filepath: str, task: DownloadTask, isrc: str):
         meta = Metadata(
             title=task.title, artist=task.artist, album=task.album,
-            album_artist=task.artist, isrc=isrc,
+            album_artist=task.artist,
+            track_number=task.track_number or 0,
+            total_tracks=task.total_tracks or 0,
+            disc_number=task.disc_number or 0,
+            total_discs=task.total_discs or 0,
+            isrc=isrc,
         )
 
-        # Fetch genre/label from MusicBrainz
+        # Fetch genre/label/year from MusicBrainz
         if isrc:
             try:
                 mb = self.musicbrainz.fetch_metadata(
@@ -316,6 +329,8 @@ class DownloadManager:
                     meta.genre = mb["genre"]
                 if mb.get("publisher"):
                     meta.publisher = mb["publisher"]
+                if mb.get("year"):
+                    meta.date = str(mb["year"])
             except Exception:
                 pass
 
