@@ -4,6 +4,11 @@
 
 ### Bug Fixes
 
+- **Download: Double JSON parse on Deezer response** — The ISRC→Deezer lookup was calling `dr.json()` twice (once for the `id` check, once for the `link`), which could fail on some response types. Now parses JSON once into `deezer_data` and reuses it.
+- **Download: Dead Spotify ISRC search removed** — Removed a stub that called Spotify's `/v1/search` API without authentication (always 401), did nothing with the response, and wasted up to 10 seconds on timeout.
+- **Download: SongLink failure crashes Deezer resolution** — If the SongLink call failed after a successful Deezer ISRC lookup, the entire Deezer block would fail and no cross-platform URLs would be set. SongLink is now wrapped in its own inner try/except so the Deezer URL is preserved even if SongLink is down.
+- **Download: Inline `import requests` moved to module level** — `import requests as _req` was being called inside the `_process` method on every download. Moved to module-level import for correctness and clarity.
+- **Config: `SONGSFETCH_OUTPUT_DIR` environment variable ignored** — The `DEFAULT_DIR` in `app.py` and the fallback in `DownloadManager.__init__` were hardcoded to `~/Music/SongsFetch`, ignoring the `SONGSFETCH_OUTPUT_DIR` env var. Downloads now honor the env var, fixing Docker deployments where output should go to `/downloads`.
 - **Download: ISRC not passed from search results** — When downloading tracks from Qobuz search results (which only provide ISRC, no URL), the ISRC was not being used to resolve cross-platform URLs. The downloader now resolves ISRC via Deezer → SongLink to obtain Tidal, Spotify, Amazon, and YouTube URLs before attempting downloads.
 - **Download: Missing metadata in download requests** — The frontend Download button was not passing `track_number`, `total_tracks`, or `disc_number` to the backend. These fields are now included in all download requests from search results.
 - **Download: Fallback when ISRC-only resolution fails** — When only an ISRC is available and Deezer/SongLink resolution fails, the downloader now falls back to Qobuz ISRC search to populate title/artist, enabling YouTube text-search as a last-resort download source.
@@ -23,8 +28,8 @@
 
 ### Files Changed
 
-- `app.py` — Added artist/album search for Qobuz and iTunes, YouTube Music search integration, imported `YouTubeDownloader`
-- `backend/downloader.py` — Improved ISRC-only resolution with Deezer→SongLink fallback and Qobuz ISRC lookup for title/artist, fixed source priority ordering
+- `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album search for Qobuz and iTunes, YouTube Music search integration, imported `YouTubeDownloader`
+- `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering
 - `backend/youtube.py` — Added `search_tracks()` method for YouTube Music search page scraping
 - `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number
 - `static/css/style.css` — Added `.results-section` and `.results-heading` styles

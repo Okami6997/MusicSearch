@@ -10,6 +10,8 @@ from enum import Enum
 from threading import Lock, Thread
 from typing import Callable, Optional
 
+import requests as _req
+
 from .amazon import AmazonDownloader
 from .analysis import validate_download_duration
 from .history import add_download
@@ -69,7 +71,7 @@ class DownloadManager:
 
     def __init__(self, output_dir: str = "",
                  on_progress: Optional[Callable] = None):
-        self.output_dir = output_dir or os.path.join(
+        self.output_dir = output_dir or os.environ.get("SONGSFETCH_OUTPUT_DIR") or os.path.join(
             os.path.expanduser("~"), "Music", "SongsFetch")
         os.makedirs(self.output_dir, exist_ok=True)
         self.on_progress = on_progress
@@ -174,51 +176,38 @@ class DownloadManager:
                 except Exception:
                     pass
             elif isrc:
-                # ISRC only — resolve cross-platform URLs so all services can be tried
+                # ISRC only — resolve cross-platform URLs via Deezer + SongLink
                 links["isrc"] = isrc
                 try:
-                    # Look up ISRC on Deezer to get a URL SongLink can resolve
-                    import requests as _req
                     dr = _req.get(
                         f"https://api.deezer.com/2.0/track/isrc:{isrc}",
                         timeout=10,
                     )
-                    if dr.status_code == 200 and dr.json().get("id"):
-                        deezer_url = dr.json().get("link", "")
-                        if deezer_url:
-                            links.setdefault("deezer_url", deezer_url)
-                            sl = self.songlink.get_all_urls(deezer_url)
-                            links.setdefault("tidal_url", sl.get("tidal_url", ""))
-                            links.setdefault("amazon_url", sl.get("amazon_url", ""))
-                            links.setdefault("deezer_url", sl.get("deezer_url", ""))
-                            links.setdefault("youtube_url", sl.get("youtube_url", ""))
-                            links.setdefault("spotify_url", sl.get("spotify_url", ""))
+                    if dr.status_code == 200:
+                        deezer_data = dr.json()
+                        if deezer_data.get("id"):
+                            deezer_url = deezer_data.get("link", "")
+                            if deezer_url:
+                                links.setdefault("deezer_url", deezer_url)
+                                try:
+                                    sl = self.songlink.get_all_urls(deezer_url)
+                                    links.setdefault("tidal_url", sl.get("tidal_url", ""))
+                                    links.setdefault("amazon_url", sl.get("amazon_url", ""))
+                                    links.setdefault("youtube_url", sl.get("youtube_url", ""))
+                                    links.setdefault("spotify_url", sl.get("spotify_url", ""))
+                                except Exception:
+                                    pass
                 except Exception:
                     pass
 
-                # Also try Spotify ISRC search for a direct Spotify URL
-                if not links.get("spotify_url"):
-                    try:
-                        import requests as _req
-                        sp_resp = _req.get(
-                            f"https://api.spotify.com/v1/search",
-                            params={"q": f"isrc:{isrc}", "type": "track", "limit": 1},
-                            timeout=10,
-                        )
-                        # Fallback: search Spotify via open search page
-                    except Exception:
-                        pass
-
-                # Resolve title+artist for YouTube fallback search
-                if not links.get("youtube_url") and not task.title:
+                # Resolve title+artist via Qobuz for YouTube fallback search
+                if not task.title:
                     try:
                         qres = self.qobuz.search_by_isrc(isrc)
                         if qres.get("title") and qres.get("artist"):
                             task.title = task.title or qres["title"]
                             task.artist = task.artist or qres["artist"]
                             task.album = task.album or qres.get("album", "")
-                            links.setdefault("title", task.title)
-                            links.setdefault("artist", task.artist)
                     except Exception:
                         pass
 

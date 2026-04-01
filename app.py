@@ -34,7 +34,7 @@ lyrics_client = LyricsClient()
 musicbrainz_client = MusicBrainzClient()
 download_manager: DownloadManager | None = None
 
-DEFAULT_DIR = os.path.join(os.path.expanduser("~"), "Music", "SongsFetch")
+DEFAULT_DIR = os.environ.get("SONGSFETCH_OUTPUT_DIR") or os.path.join(os.path.expanduser("~"), "Music", "SongsFetch")
 settings = {
     "output_dir": DEFAULT_DIR,
     "preferred_source": "tidal",
