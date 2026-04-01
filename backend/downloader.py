@@ -174,8 +174,53 @@ class DownloadManager:
                 except Exception:
                     pass
             elif isrc:
-                # ISRC only — Qobuz can search by ISRC; try SongLink too
+                # ISRC only — resolve cross-platform URLs so all services can be tried
                 links["isrc"] = isrc
+                try:
+                    # Look up ISRC on Deezer to get a URL SongLink can resolve
+                    import requests as _req
+                    dr = _req.get(
+                        f"https://api.deezer.com/2.0/track/isrc:{isrc}",
+                        timeout=10,
+                    )
+                    if dr.status_code == 200 and dr.json().get("id"):
+                        deezer_url = dr.json().get("link", "")
+                        if deezer_url:
+                            links.setdefault("deezer_url", deezer_url)
+                            sl = self.songlink.get_all_urls(deezer_url)
+                            links.setdefault("tidal_url", sl.get("tidal_url", ""))
+                            links.setdefault("amazon_url", sl.get("amazon_url", ""))
+                            links.setdefault("deezer_url", sl.get("deezer_url", ""))
+                            links.setdefault("youtube_url", sl.get("youtube_url", ""))
+                            links.setdefault("spotify_url", sl.get("spotify_url", ""))
+                except Exception:
+                    pass
+
+                # Also try Spotify ISRC search for a direct Spotify URL
+                if not links.get("spotify_url"):
+                    try:
+                        import requests as _req
+                        sp_resp = _req.get(
+                            f"https://api.spotify.com/v1/search",
+                            params={"q": f"isrc:{isrc}", "type": "track", "limit": 1},
+                            timeout=10,
+                        )
+                        # Fallback: search Spotify via open search page
+                    except Exception:
+                        pass
+
+                # Resolve title+artist for YouTube fallback search
+                if not links.get("youtube_url") and not task.title:
+                    try:
+                        qres = self.qobuz.search_by_isrc(isrc)
+                        if qres.get("title") and qres.get("artist"):
+                            task.title = task.title or qres["title"]
+                            task.artist = task.artist or qres["artist"]
+                            task.album = task.album or qres.get("album", "")
+                            links.setdefault("title", task.title)
+                            links.setdefault("artist", task.artist)
+                    except Exception:
+                        pass
 
             # If we have title+artist but no links at all, ensure YouTube can search
             if task.title and task.artist:
@@ -294,17 +339,45 @@ class DownloadManager:
             raise ValueError("No YouTube URL and no title/artist for search")
 
         order = {
-            "tidal": ("Tidal", tidal_fn),
-            "spotify": ("Spotify", spotify_fn),
-            "qobuz": ("Qobuz", qobuz_fn),
-            "amazon": ("Amazon", amazon_fn),
-            "youtube": ("YouTube", youtube_fn),
+            "tidal": ("Tidal", tidal_fn, bool(tidal_url)),
+            "spotify": ("Spotify", spotify_fn, bool(spotify_url)),
+            "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
+            "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
+            "youtube": ("YouTube", youtube_fn,
+                        bool(youtube_url) or bool(task.title and task.artist)),
         }
         pref = self.preferred_source.lower()
+
+        # Preferred source goes first if it has data
         if pref in order:
-            sources.append(order.pop(pref))
-        for v in order.values():
-            sources.append(v)
+            name, fn, has_data = order.pop(pref)
+            if has_data:
+                sources.append((name, fn))
+
+        # Then remaining sources that have data, then those that don't
+        with_data = []
+        without_data = []
+        for key, (name, fn, has_data) in order.items():
+            if has_data:
+                with_data.append((name, fn))
+            else:
+                without_data.append((name, fn))
+        sources.extend(with_data)
+        sources.extend(without_data)
+
+        # Ensure preferred source is always in the list (even without data)
+        pref_in_sources = any(n.lower() == pref for n, _ in sources)
+        if not pref_in_sources:
+            fn_map = {
+                "tidal": ("Tidal", tidal_fn),
+                "spotify": ("Spotify", spotify_fn),
+                "qobuz": ("Qobuz", qobuz_fn),
+                "amazon": ("Amazon", amazon_fn),
+                "youtube": ("YouTube", youtube_fn),
+            }
+            if pref in fn_map:
+                sources.append(fn_map[pref])
+
         return sources
 
     def _embed(self, filepath: str, task: DownloadTask, isrc: str):

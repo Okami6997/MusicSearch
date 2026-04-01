@@ -125,6 +125,8 @@ def search():
     try:
         from backend.qobuz import QobuzDownloader
         qobuz = QobuzDownloader()
+
+        # Search tracks
         resp = qobuz.session.get(
             "https://www.qobuz.com/api.json/0.2/track/search",
             params={"query": q, "limit": 20, "app_id": qobuz.APP_ID},
@@ -132,31 +134,78 @@ def search():
         )
         resp.raise_for_status()
         items = resp.json().get("tracks", {}).get("items", [])
-        if items:
-            tracks = []
-            for t in items:
-                album_data = t.get("album", {})
-                tracks.append({
-                    "id": t.get("id"),
-                    "title": t.get("title", ""),
-                    "artist": t.get("performer", {}).get("name", ""),
-                    "album": album_data.get("title", ""),
-                    "cover_url": album_data.get("image", {}).get("large", ""),
-                    "duration_ms": (t.get("duration", 0) or 0) * 1000,
-                    "isrc": t.get("isrc", ""),
-                    "hires": t.get("hires_streamable", False),
-                    "bit_depth": t.get("maximum_bit_depth", 0),
-                    "sample_rate": t.get("maximum_sampling_rate", 0),
-                    "track_number": t.get("track_number", 0),
-                    "total_tracks": t.get("album", {}).get("tracks_count", 0),
-                    "disc_number": t.get("media_number", 0) or 1,
+        tracks = []
+        for t in items:
+            album_data = t.get("album", {})
+            tracks.append({
+                "id": t.get("id"),
+                "title": t.get("title", ""),
+                "artist": t.get("performer", {}).get("name", ""),
+                "album": album_data.get("title", ""),
+                "cover_url": album_data.get("image", {}).get("large", ""),
+                "duration_ms": (t.get("duration", 0) or 0) * 1000,
+                "isrc": t.get("isrc", ""),
+                "hires": t.get("hires_streamable", False),
+                "bit_depth": t.get("maximum_bit_depth", 0),
+                "sample_rate": t.get("maximum_sampling_rate", 0),
+                "track_number": t.get("track_number", 0),
+                "total_tracks": t.get("album", {}).get("tracks_count", 0),
+                "disc_number": t.get("media_number", 0) or 1,
+            })
+
+        # Search artists
+        artists = []
+        try:
+            aresp = qobuz.session.get(
+                "https://www.qobuz.com/api.json/0.2/artist/search",
+                params={"query": q, "limit": 5, "app_id": qobuz.APP_ID},
+                timeout=15,
+            )
+            aresp.raise_for_status()
+            for a in aresp.json().get("artists", {}).get("items", []):
+                img = a.get("image", {})
+                artists.append({
+                    "id": a.get("id"),
+                    "name": a.get("name", ""),
+                    "image_url": img.get("large", "") or img.get("medium", "") or img.get("small", ""),
+                    "albums_count": a.get("albums_count", 0),
                 })
-            return jsonify({"tracks": tracks, "source": "qobuz"})
+        except Exception:
+            pass
+
+        # Search albums
+        albums = []
+        try:
+            alresp = qobuz.session.get(
+                "https://www.qobuz.com/api.json/0.2/album/search",
+                params={"query": q, "limit": 5, "app_id": qobuz.APP_ID},
+                timeout=15,
+            )
+            alresp.raise_for_status()
+            for al in alresp.json().get("albums", {}).get("items", []):
+                albums.append({
+                    "id": al.get("id"),
+                    "title": al.get("title", ""),
+                    "artist": al.get("artist", {}).get("name", ""),
+                    "cover_url": al.get("image", {}).get("large", ""),
+                    "tracks_count": al.get("tracks_count", 0),
+                    "release_date": al.get("release_date_original", ""),
+                    "hires": al.get("hires_streamable", False),
+                })
+        except Exception:
+            pass
+
+        if tracks or artists or albums:
+            return jsonify({
+                "tracks": tracks, "artists": artists, "albums": albums,
+                "source": "qobuz",
+            })
     except Exception:
         pass
 
     # Fallback: iTunes Search API (free, no auth required)
     try:
+        # Search tracks
         itunes_resp = http_requests.get(
             "https://itunes.apple.com/search",
             params={"term": q, "media": "music", "entity": "song", "limit": 20},
@@ -167,7 +216,6 @@ def search():
         tracks = []
         for t in results:
             artwork = t.get("artworkUrl100", "")
-            # Get higher-res artwork
             if artwork:
                 artwork = artwork.replace("100x100bb", "600x600bb")
             tracks.append({
@@ -182,7 +230,55 @@ def search():
                 "bit_depth": 0,
                 "sample_rate": 0,
             })
-        return jsonify({"tracks": tracks, "source": "itunes"})
+
+        # Search artists
+        artists = []
+        try:
+            ar = http_requests.get(
+                "https://itunes.apple.com/search",
+                params={"term": q, "media": "music", "entity": "musicArtist", "limit": 5},
+                timeout=15,
+            )
+            ar.raise_for_status()
+            for a in ar.json().get("results", []):
+                artists.append({
+                    "id": a.get("artistId"),
+                    "name": a.get("artistName", ""),
+                    "image_url": "",
+                    "albums_count": 0,
+                })
+        except Exception:
+            pass
+
+        # Search albums
+        albums = []
+        try:
+            alr = http_requests.get(
+                "https://itunes.apple.com/search",
+                params={"term": q, "media": "music", "entity": "album", "limit": 5},
+                timeout=15,
+            )
+            alr.raise_for_status()
+            for al in alr.json().get("results", []):
+                art = al.get("artworkUrl100", "")
+                if art:
+                    art = art.replace("100x100bb", "600x600bb")
+                albums.append({
+                    "id": al.get("collectionId"),
+                    "title": al.get("collectionName", ""),
+                    "artist": al.get("artistName", ""),
+                    "cover_url": art,
+                    "tracks_count": al.get("trackCount", 0),
+                    "release_date": al.get("releaseDate", ""),
+                    "hires": False,
+                })
+        except Exception:
+            pass
+
+        return jsonify({
+            "tracks": tracks, "artists": artists, "albums": albums,
+            "source": "itunes",
+        })
     except Exception as e:
         return jsonify({"error": f"Search failed: {str(e)}"}), 500
 

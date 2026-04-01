@@ -63,38 +63,80 @@
             const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            renderSearchResults(data.tracks || []);
+            renderSearchResults(data.tracks || [], data.artists || [], data.albums || []);
         } catch (e) {
             toast(e.message, "error");
             showEmpty();
         }
     }
 
-    function renderSearchResults(tracks) {
+    function renderSearchResults(tracks, artists, albums) {
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
-        if (!tracks.length) {
+        if (!tracks.length && !artists.length && !albums.length) {
             list.innerHTML = '<p class="text-muted">No results found.</p>';
             results.classList.remove("hidden");
             return;
         }
         results.classList.remove("hidden");
-        list.innerHTML = tracks.map((t) => `
-            <div class="track-row">
-                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                <div class="track-info">
-                    <div class="track-title">${esc(t.title)}</div>
-                    <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                    <div class="track-meta">${t.isrc ? 'ISRC: ' + esc(t.isrc) : ''}${t.hires ? ' · Hi-Res' : ''}${t.sample_rate ? ' · ' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit' : ''}</div>
+        let html = "";
+
+        // Artists section
+        if (artists.length) {
+            html += '<div class="results-section"><h3 class="results-heading">Artists</h3>';
+            html += artists.map((a) => `
+                <div class="track-row artist-row">
+                    <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(a.name)}</div>
+                        <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
+                    </div>
                 </div>
-                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                <div class="track-actions">
-                    <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0})">Download</button>
+            `).join("");
+            html += '</div>';
+        }
+
+        // Albums section
+        if (albums.length) {
+            html += '<div class="results-section"><h3 class="results-heading">Albums</h3>';
+            html += albums.map((al) => `
+                <div class="track-row album-row">
+                    <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(al.title)}</div>
+                        <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
+                        ${al.hires ? '<div class="track-meta">Hi-Res</div>' : ''}
+                    </div>
                 </div>
-            </div>
-        `).join("");
+            `).join("");
+            html += '</div>';
+        }
+
+        // Tracks section
+        if (tracks.length) {
+            html += '<div class="results-section"><h3 class="results-heading">Tracks</h3>';
+            html += tracks.map((t) => `
+                <div class="track-row">
+                    <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(t.title)}</div>
+                        <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                        <div class="track-meta">${t.isrc ? 'ISRC: ' + esc(t.isrc) : ''}${t.hires ? ' · Hi-Res' : ''}${t.sample_rate ? ' · ' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit' : ''}</div>
+                    </div>
+                    <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+                    <div class="track-actions">
+                        <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0})">Download</button>
+                    </div>
+                </div>
+            `).join("");
+            html += '</div>';
+        }
+
+        list.innerHTML = html;
     }
 
     // ── URL Resolve ─────────────────────────────────────────
@@ -153,12 +195,12 @@
     }
 
     // ── Download ────────────────────────────────────────────
-    window.sfDownload = async function (url, isrc, title, artist, album, cover, durationMs) {
+    window.sfDownload = async function (url, isrc, title, artist, album, cover, durationMs, trackNumber, totalTracks, discNumber) {
         try {
             const resp = await fetch("/api/download", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ url, isrc, title, artist, album, cover_url: cover, duration_ms: durationMs }),
+                body: JSON.stringify({ url, isrc, title, artist, album, cover_url: cover, duration_ms: durationMs, track_number: trackNumber || 0, total_tracks: totalTracks || 0, disc_number: discNumber || 0 }),
             });
             const data = await resp.json();
             if (data.error) throw new Error(data.error);

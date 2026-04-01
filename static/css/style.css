@@ -227,6 +227,10 @@ input, select { font: inherit; color: inherit; }
 /* ── Track meta line ─────────────────────────────────────────── */
 .track-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
+/* ── Search Results Sections ────────────────────────────────── */
+.results-section { margin-bottom: 20px; }
+.results-heading { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+
 /* ── Platform / Resolve ──────────────────────────────────────── */
 .resolve-card {
     margin-top: 24px; padding: 20px; background: var(--bg-card);
