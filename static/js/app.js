@@ -63,18 +63,18 @@
             const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            renderSearchResults(data.tracks || [], data.artists || [], data.albums || []);
+            renderSearchResults(data.tracks || [], data.artists || [], data.albums || [], data.youtube_tracks || []);
         } catch (e) {
             toast(e.message, "error");
             showEmpty();
         }
     }
 
-    function renderSearchResults(tracks, artists, albums) {
+    function renderSearchResults(tracks, artists, albums, youtubeTracks) {
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
-        if (!tracks.length && !artists.length && !albums.length) {
+        if (!tracks.length && !artists.length && !albums.length && !youtubeTracks.length) {
             list.innerHTML = '<p class="text-muted">No results found.</p>';
             results.classList.remove("hidden");
             return;
@@ -136,6 +136,27 @@
             html += '</div>';
         }
 
+        // YouTube Music section
+        if (youtubeTracks.length) {
+            html += '<div class="results-section"><h3 class="results-heading">YouTube Music</h3>';
+            html += youtubeTracks.map((t) => `
+                <div class="track-row">
+                    <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(t.title || t.id)}</div>
+                        <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                        <div class="track-meta">YouTube Music · MP3 320kbps</div>
+                    </div>
+                    <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+                    <div class="track-actions">
+                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','','${esc(t.title || '')}','${esc(t.artist || '')}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},0,0,0)">Download</button>
+                    </div>
+                </div>
+            `).join("");
+            html += '</div>';
+        }
+
         list.innerHTML = html;
     }
 
@@ -167,9 +188,11 @@
 
         const platforms = [
             { key: "tidal", name: "Tidal", url: data.tidal_url },
+            { key: "spotify", name: "Spotify", url: data.spotify_url },
             { key: "amazon", name: "Amazon Music", url: data.amazon_url },
             { key: "qobuz", name: "Qobuz", available: data.qobuz },
             { key: "deezer", name: "Deezer", url: data.deezer_url },
+            { key: "youtube", name: "YouTube Music", url: data.youtube_url },
         ];
 
         $("#platform-list").innerHTML = platforms.map((p) => {
@@ -186,8 +209,8 @@
         if (isrc) {
             actionsHtml += `<div class="info-row"><strong>ISRC:</strong> ${esc(isrc)}</div>`;
         }
-        // Download button — use tidal_url or amazon_url or isrc
-        const dlUrl = data.tidal_url || data.amazon_url || "";
+        // Download button — use the best available URL or isrc
+        const dlUrl = data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
         if (dlUrl || isrc) {
             actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownload('${esc(dlUrl)}','${esc(isrc)}','','','','',0)">Download Track</button>`;
         }

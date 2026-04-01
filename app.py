@@ -12,6 +12,7 @@ from backend.songlink import SongLinkClient, is_music_url, parse_music_url
 from backend.lyrics import LyricsClient
 from backend.downloader import DownloadManager
 from backend.musicbrainz import MusicBrainzClient
+from backend.youtube import YouTubeDownloader
 from backend import analysis, resample, filemanager, history
 
 try:
@@ -59,6 +60,32 @@ def _on_progress(task_data: dict):
 
 _init_download_manager()
 history.init_db()
+youtube_client = YouTubeDownloader()
+
+
+def _youtube_search(q: str, limit: int = 10) -> list[dict]:
+    """Search YouTube Music and return tracks in the standard format."""
+    try:
+        yt_results = youtube_client.search_tracks(q, limit=limit)
+        tracks = []
+        for r in yt_results:
+            tracks.append({
+                "id": r.get("id", ""),
+                "title": r.get("title", ""),
+                "artist": r.get("artist", ""),
+                "album": r.get("album", ""),
+                "cover_url": r.get("cover_url", ""),
+                "duration_ms": r.get("duration_ms", 0),
+                "isrc": "",
+                "hires": False,
+                "bit_depth": 0,
+                "sample_rate": 0,
+                "url": r.get("url", ""),
+                "source": "youtube",
+            })
+        return tracks
+    except Exception:
+        return []
 
 
 @app.after_request
@@ -196,8 +223,11 @@ def search():
             pass
 
         if tracks or artists or albums:
+            # Also fetch YouTube Music results
+            yt_tracks = _youtube_search(q, limit=10)
             return jsonify({
                 "tracks": tracks, "artists": artists, "albums": albums,
+                "youtube_tracks": yt_tracks,
                 "source": "qobuz",
             })
     except Exception:
@@ -275,8 +305,11 @@ def search():
         except Exception:
             pass
 
+        # Also fetch YouTube Music results
+        yt_tracks = _youtube_search(q, limit=10)
         return jsonify({
             "tracks": tracks, "artists": artists, "albums": albums,
+            "youtube_tracks": yt_tracks,
             "source": "itunes",
         })
     except Exception as e:

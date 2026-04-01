@@ -56,6 +56,161 @@ class YouTubeDownloader:
 
         return ""
 
+    def search_tracks(self, query: str, limit: int = 20) -> list[dict]:
+        """Search YouTube Music for tracks and return a list of results.
+
+        Uses YouTube Music's search page — no API key required.
+        """
+        search_url = (
+            f"https://music.youtube.com/search?q={quote(query)}"
+        )
+        try:
+            headers = {
+                "User-Agent": self.UA,
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            resp = self.session.get(search_url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            text = resp.text
+        except Exception as e:
+            print(f"[YouTube Music] Search error: {e}")
+            return []
+
+        # Extract video data from the page's initial data JSON
+        results = []
+        seen_ids = set()
+
+        # Find all videoId + title pairs from the page
+        # YouTube embeds data in ytInitialData JSON
+        import json as _json
+        m = re.search(r'var ytInitialData\s*=\s*(\{.+?\});', text)
+        if not m:
+            # Fallback: scrape videoId occurrences
+            for vid_match in re.finditer(
+                r'"videoId":"([a-zA-Z0-9_-]{11})"', text
+            ):
+                vid = vid_match.group(1)
+                if vid not in seen_ids and len(results) < limit:
+                    seen_ids.add(vid)
+                    results.append({
+                        "id": vid,
+                        "title": "",
+                        "artist": "",
+                        "album": "",
+                        "cover_url": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                        "duration_ms": 0,
+                        "url": f"https://music.youtube.com/watch?v={vid}",
+                    })
+            return results
+
+        try:
+            data = _json.loads(m.group(1))
+            # Navigate the nested structure to find music results
+            contents = (
+                data.get("contents", {})
+                .get("tabbedSearchResultsRenderer", {})
+                .get("tabs", [{}])[0]
+                .get("tabRenderer", {})
+                .get("content", {})
+                .get("sectionListRenderer", {})
+                .get("contents", [])
+            )
+            for section in contents:
+                items = (
+                    section.get("musicShelfRenderer", {})
+                    .get("contents", [])
+                )
+                for item in items:
+                    if len(results) >= limit:
+                        break
+                    renderer = item.get(
+                        "musicResponsiveListItemRenderer", {}
+                    )
+                    # Extract video ID
+                    overlay = renderer.get("overlay", {})
+                    play_btn = (
+                        overlay
+                        .get("musicItemThumbnailOverlayRenderer", {})
+                        .get("content", {})
+                        .get("musicPlayButtonRenderer", {})
+                        .get("playNavigationEndpoint", {})
+                        .get("watchEndpoint", {})
+                    )
+                    vid = play_btn.get("videoId", "")
+                    if not vid or vid in seen_ids:
+                        continue
+                    seen_ids.add(vid)
+
+                    # Extract title and artist from flex columns
+                    flex_cols = renderer.get("flexColumns", [])
+                    title = ""
+                    artist = ""
+                    album = ""
+                    if len(flex_cols) > 0:
+                        runs = (
+                            flex_cols[0]
+                            .get("musicResponsiveListItemFlexColumnRenderer", {})
+                            .get("text", {})
+                            .get("runs", [])
+                        )
+                        if runs:
+                            title = runs[0].get("text", "")
+                    if len(flex_cols) > 1:
+                        runs = (
+                            flex_cols[1]
+                            .get("musicResponsiveListItemFlexColumnRenderer", {})
+                            .get("text", {})
+                            .get("runs", [])
+                        )
+                        parts = [r.get("text", "") for r in runs]
+                        # Format: "Artist • Album • Duration" separated by " • "
+                        text_parts = "".join(parts).split(" \u2022 ")
+                        if text_parts:
+                            artist = text_parts[0].strip()
+                        if len(text_parts) > 1:
+                            album = text_parts[1].strip()
+
+                    # Extract thumbnail
+                    thumbs = (
+                        renderer.get("thumbnail", {})
+                        .get("musicThumbnailRenderer", {})
+                        .get("thumbnail", {})
+                        .get("thumbnails", [])
+                    )
+                    cover = ""
+                    if thumbs:
+                        cover = thumbs[-1].get("url", "")
+
+                    results.append({
+                        "id": vid,
+                        "title": title,
+                        "artist": artist,
+                        "album": album,
+                        "cover_url": cover or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                        "duration_ms": 0,
+                        "url": f"https://music.youtube.com/watch?v={vid}",
+                    })
+        except Exception as e:
+            print(f"[YouTube Music] Parse error: {e}")
+            # Fallback to simple videoId scraping
+            for vid_match in re.finditer(
+                r'"videoId":"([a-zA-Z0-9_-]{11})"', text
+            ):
+                vid = vid_match.group(1)
+                if vid not in seen_ids and len(results) < limit:
+                    seen_ids.add(vid)
+                    results.append({
+                        "id": vid,
+                        "title": "",
+                        "artist": "",
+                        "album": "",
+                        "cover_url": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                        "duration_ms": 0,
+                        "url": f"https://music.youtube.com/watch?v={vid}",
+                    })
+
+        return results
+
     # ── Download APIs ────────────────────────────────────────────
 
     def _request_spotube_dl(self, video_id: str) -> str:
