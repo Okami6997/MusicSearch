@@ -21,17 +21,22 @@ def _build_folder_label(sample_rate: str, bit_depth: str) -> str:
 def resample_audio(input_files: list[str], sample_rate: str = "",
                    bit_depth: str = "") -> list[dict]:
     """Resample audio files to the specified sample rate and/or bit depth.
-    Returns list of {input_file, output_file, success, error}."""
+    Returns list of {input_file, output_file, success, error}.
+    Uses ffmpeg subprocess directly."""
     if not sample_rate and not bit_depth:
         raise ValueError("At least one of sample_rate or bit_depth must be specified")
+    return _resample_subprocess(input_files, sample_rate, bit_depth)
 
+
+def _resample_subprocess(input_files: list[str], sample_rate: str,
+                          bit_depth: str) -> list[dict]:
+    """Resample via direct ffmpeg subprocess (fallback when ffmpeg-python absent)."""
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True, timeout=5)
     except Exception:
         raise RuntimeError("ffmpeg not found — install FFmpeg")
 
     folder_label = _build_folder_label(sample_rate, bit_depth)
-    results = []
 
     def process(input_file: str) -> dict:
         result = {"input_file": input_file, "output_file": "", "success": False, "error": ""}
@@ -44,7 +49,6 @@ def resample_audio(input_files: list[str], sample_rate: str = "",
             result["output_file"] = output_file
 
             args = ["ffmpeg", "-i", input_file, "-y"]
-
             if bit_depth:
                 if bit_depth == "16":
                     args += ["-c:a", "flac", "-sample_fmt", "s16"]
@@ -55,10 +59,8 @@ def resample_audio(input_files: list[str], sample_rate: str = "",
                     args += ["-c:a", "flac"]
             else:
                 args += ["-c:a", "flac"]
-
             if sample_rate:
                 args += ["-ar", sample_rate]
-
             args += ["-map_metadata", "0", output_file]
 
             r = subprocess.run(args, capture_output=True, timeout=600)
@@ -72,14 +74,16 @@ def resample_audio(input_files: list[str], sample_rate: str = "",
 
     with ThreadPoolExecutor(max_workers=min(4, len(input_files))) as pool:
         futures = {pool.submit(process, f): f for f in input_files}
-        for future in as_completed(futures):
-            results.append(future.result())
-
-    return results
+        return [fut.result() for fut in as_completed(futures)]
 
 
 def get_flac_info_batch(paths: list[str]) -> list[dict]:
     """Get sample rate and bit depth for a batch of audio files."""
+    return _probe_subprocess(paths)
+
+
+def _probe_subprocess(paths: list[str]) -> list[dict]:
+    """Probe audio files using ffprobe subprocess (fallback)."""
     def probe(path: str) -> dict:
         info = {"path": path, "sample_rate": 0, "bits_per_sample": 0}
         try:
@@ -94,7 +98,6 @@ def get_flac_info_batch(paths: list[str]) -> list[dict]:
                 if "=" in line:
                     k, v = line.split("=", 1)
                     kv[k.strip()] = v.strip()
-
             if kv.get("sample_rate"):
                 info["sample_rate"] = int(kv["sample_rate"])
             bits = 0

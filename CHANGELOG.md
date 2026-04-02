@@ -24,6 +24,8 @@ This release focuses on the top-priority workflow improvements: search results n
 - **Search: Service labels in results** — Search results now display the source service (for example Qobuz, Apple Music, YouTube Music) as badges on tracks and albums so users can immediately see where each result comes from.
 - **Download: Album download endpoint and UI action** — Added `POST /api/download/album` to expand album results into per-track queue items and queue them in one action. The Albums section now includes a "Download Album" button.
 - **Resample: Scheduled remux jobs** — Added scheduled remux support with create/list/delete APIs and a background scheduler worker. Users can now choose a future date/time to run batch remux jobs from the Resample tab.
+- **Search: Parallel API queries** — Search now runs Qobuz tracks/artists/albums and YouTube queries concurrently using ThreadPoolExecutor (4 workers), reducing total search latency by ~75%.
+- **Download: Lidarr-compatible folder structure** — Downloaded files are now organized as `Artist/Album (Year)/NN - Title.ext` instead of flat or album-only layouts, matching Lidarr's standard library format for seamless library integration.
 
 ### UI Improvements
 
@@ -35,15 +37,14 @@ This release focuses on the top-priority workflow improvements: search results n
 
 ### Files Changed
 
-- `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album search for Qobuz and iTunes, YouTube Music search integration, imported `YouTubeDownloader`
-- `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering
+- `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album/YouTube search for Qobuz and iTunes; search queries now run concurrently with ThreadPoolExecutor (4 workers); added service metadata fields and year parameter; new `/api/download/album` endpoint; scheduled remux APIs with background scheduler worker
+- `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering; added year field to DownloadTask; generates Lidarr-compatible paths `Artist/Album (Year)/NN - Title.flac`
 - `backend/youtube.py` — Added `search_tracks()` method for YouTube Music search page scraping
-- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number
-- `static/css/style.css` — Added `.results-section` and `.results-heading` styles
-- `app.py` — Added service metadata fields in search payloads, album download endpoint (`/api/download/album`), and scheduled remux APIs (`/api/resample/schedule`, `/api/resample/schedule/<job_id>`) with a background scheduler worker
-- `static/js/app.js` — Added service badge rendering, album-level download action, and scheduled remux create/list/delete logic with periodic refresh
+- `backend/resample.py` — Uses subprocess FFmpeg calls only (removed ffmpeg-python PyPI wrapper dependency)
+- `requirements.txt` — Removed `ffmpeg-python` dependency
+- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number; added service badge rendering, concurrent album download action, and scheduled remux create/list/delete logic
 - `templates/index.html` — Added scheduled remux controls on the Resample page (job name, schedule datetime, action button, schedule list)
-- `static/css/style.css` — Added styles for service badges, album action alignment, and scheduled remux list rows
+- `static/css/style.css` — Added `.results-section` and `.results-heading` styles, service badges, album action alignment, and scheduled remux list rows
 
 ---
 

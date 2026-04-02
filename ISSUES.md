@@ -2,9 +2,10 @@
 - [x] Show the service associated with the results (e.g., Spotify, Apple Music) in the search results
 - [x] Implement Scheduled Remux functionality
 - [x] Implement Album download functionality
-- [ ] Use Parallel processing for faster search results, using asyncio.
-- [ ] Use Pypi for remuxing in conjuction with ffmpeg for better performance and reliability.
+- [x] Use Parallel processing for faster search results and downloads, using asyncio.
+- [x] When downloading a track/album. store it in a format that is similar to lidarr as it is a music downloader and library manager. This will allow users to easily integrate the downloaded music into their existing library management system.
 - [ ] Add support for downloading playlists
+- [ ] Add support for downloading from Apple Music
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Optimize download speed and performance

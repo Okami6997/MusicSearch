@@ -43,6 +43,7 @@ class DownloadTask:
     title: str = ""
     artist: str = ""
     album: str = ""
+    year: str = ""
     cover_url: str = ""
     duration_ms: int = 0
     track_number: int = 0
@@ -62,7 +63,7 @@ class DownloadTask:
             "cover_url": self.cover_url, "duration_ms": self.duration_ms,
             "status": self.status, "progress": self.progress,
             "error": self.error, "output_path": self.output_path,
-            "source": self.source,
+            "source": self.source, "year": self.year,
         }
 
 
@@ -96,13 +97,13 @@ class DownloadManager:
                   artist: str = "", album: str = "", cover_url: str = "",
                   duration_ms: int = 0, track_number: int = 0,
                   total_tracks: int = 0, disc_number: int = 0,
-                  total_discs: int = 0) -> str:
+                  total_discs: int = 0, year: str = "") -> str:
         """Add a track to the download queue. Provide URL or ISRC."""
         task_id = str(uuid.uuid4())[:8]
         task = DownloadTask(
             id=task_id, url=url, isrc=isrc,
             title=title or url or isrc, artist=artist,
-            album=album, cover_url=cover_url, duration_ms=duration_ms,
+            album=album, year=year, cover_url=cover_url, duration_ms=duration_ms,
             track_number=track_number, total_tracks=total_tracks,
             disc_number=disc_number, total_discs=total_discs,
         )
@@ -263,15 +264,19 @@ class DownloadManager:
 
     def _download(self, task: DownloadTask, links: dict, isrc: str,
                   progress_cb) -> str:
+        # Lidarr-compatible layout: Artist / Album (Year) / track - Title
+        safe_artist = self._safe_name(task.artist or "Unknown Artist")
+        safe_album = self._safe_name(task.album or "Unknown Album")
+        year = (task.year or "").strip()
+        album_folder = f"{safe_album} ({year})" if year else safe_album
         safe_title = self._safe_name(task.title or task.url or task.isrc)
-        safe_artist = self._safe_name(task.artist or "Unknown")
-        filename = f"{safe_title} - {safe_artist}.flac"
+        if task.track_number:
+            filename = f"{task.track_number:02d} - {safe_title}.flac"
+        else:
+            filename = f"{safe_title}.flac"
 
-        album_dir = self.output_dir
-        if task.album:
-            album_dir = os.path.join(self.output_dir,
-                                     self._safe_name(task.album))
-            os.makedirs(album_dir, exist_ok=True)
+        album_dir = os.path.join(self.output_dir, safe_artist, album_folder)
+        os.makedirs(album_dir, exist_ok=True)
 
         sources = self._ordered_sources(links, isrc, task)
         errors = []

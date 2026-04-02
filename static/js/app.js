@@ -139,7 +139,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0})">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
                     </div>
                 </div>
             `).join("");
@@ -160,7 +160,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','','${esc(t.title || '')}','${esc(t.artist || '')}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},0,0,0)">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','','${esc(t.title || '')}','${esc(t.artist || '')}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
                     </div>
                 </div>
             `).join("");
@@ -228,12 +228,12 @@
     }
 
     // ── Download ────────────────────────────────────────────
-    window.sfDownload = async function (url, isrc, title, artist, album, cover, durationMs, trackNumber, totalTracks, discNumber) {
+    window.sfDownload = async function (url, isrc, title, artist, album, cover, durationMs, trackNumber, totalTracks, discNumber, year) {
         try {
             const resp = await fetch("/api/download", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ url, isrc, title, artist, album, cover_url: cover, duration_ms: durationMs, track_number: trackNumber || 0, total_tracks: totalTracks || 0, disc_number: discNumber || 0 }),
+                body: JSON.stringify({ url, isrc, title, artist, album, cover_url: cover, duration_ms: durationMs, track_number: trackNumber || 0, total_tracks: totalTracks || 0, disc_number: discNumber || 0, year: year || "" }),
             });
             const data = await resp.json();
             if (data.error) throw new Error(data.error);

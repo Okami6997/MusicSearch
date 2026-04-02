@@ -233,82 +233,95 @@ def search():
         from backend.qobuz import QobuzDownloader
         qobuz = QobuzDownloader()
 
-        # Search tracks
-        resp = qobuz.session.get(
-            "https://www.qobuz.com/api.json/0.2/track/search",
-            params={"query": q, "limit": 20, "app_id": qobuz.APP_ID},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        items = resp.json().get("tracks", {}).get("items", [])
-        tracks = []
-        for t in items:
-            album_data = t.get("album", {})
-            tracks.append({
-                "id": t.get("id"),
-                "title": t.get("title", ""),
-                "artist": t.get("performer", {}).get("name", ""),
-                "album": album_data.get("title", ""),
-                "cover_url": album_data.get("image", {}).get("large", ""),
-                "duration_ms": (t.get("duration", 0) or 0) * 1000,
-                "isrc": t.get("isrc", ""),
-                "hires": t.get("hires_streamable", False),
-                "bit_depth": t.get("maximum_bit_depth", 0),
-                "sample_rate": t.get("maximum_sampling_rate", 0),
-                "track_number": t.get("track_number", 0),
-                "total_tracks": t.get("album", {}).get("tracks_count", 0),
-                "disc_number": t.get("media_number", 0) or 1,
-                "source": "qobuz",
-                "service": "Qobuz",
-            })
+        # Run all Qobuz searches + YouTube concurrently
+        from concurrent.futures import ThreadPoolExecutor as _TPE
 
-        # Search artists
-        artists = []
-        try:
-            aresp = qobuz.session.get(
+        def _do_qobuz_tracks():
+            r = qobuz.session.get(
+                "https://www.qobuz.com/api.json/0.2/track/search",
+                params={"query": q, "limit": 20, "app_id": qobuz.APP_ID},
+                timeout=15,
+            )
+            r.raise_for_status()
+            out = []
+            for t in r.json().get("tracks", {}).get("items", []):
+                album_data = t.get("album", {})
+                out.append({
+                    "id": t.get("id"),
+                    "title": t.get("title", ""),
+                    "artist": t.get("performer", {}).get("name", ""),
+                    "album": album_data.get("title", ""),
+                    "cover_url": album_data.get("image", {}).get("large", ""),
+                    "duration_ms": (t.get("duration", 0) or 0) * 1000,
+                    "isrc": t.get("isrc", ""),
+                    "hires": t.get("hires_streamable", False),
+                    "bit_depth": t.get("maximum_bit_depth", 0),
+                    "sample_rate": t.get("maximum_sampling_rate", 0),
+                    "track_number": t.get("track_number", 0),
+                    "total_tracks": t.get("album", {}).get("tracks_count", 0),
+                    "disc_number": t.get("media_number", 0) or 1,
+                    "year": (album_data.get("release_date_original") or "")[:4],
+                    "source": "qobuz",
+                    "service": "Qobuz",
+                })
+            return out
+
+        def _do_qobuz_artists():
+            r = qobuz.session.get(
                 "https://www.qobuz.com/api.json/0.2/artist/search",
                 params={"query": q, "limit": 5, "app_id": qobuz.APP_ID},
                 timeout=15,
             )
-            aresp.raise_for_status()
-            for a in aresp.json().get("artists", {}).get("items", []):
+            r.raise_for_status()
+            out = []
+            for a in r.json().get("artists", {}).get("items", []):
                 img = a.get("image", {})
-                artists.append({
+                out.append({
                     "id": a.get("id"),
                     "name": a.get("name", ""),
                     "image_url": img.get("large", "") or img.get("medium", "") or img.get("small", ""),
                     "albums_count": a.get("albums_count", 0),
                 })
-        except Exception:
-            pass
+            return out
 
-        # Search albums
-        albums = []
-        try:
-            alresp = qobuz.session.get(
+        def _do_qobuz_albums():
+            r = qobuz.session.get(
                 "https://www.qobuz.com/api.json/0.2/album/search",
                 params={"query": q, "limit": 5, "app_id": qobuz.APP_ID},
                 timeout=15,
             )
-            alresp.raise_for_status()
-            for al in alresp.json().get("albums", {}).get("items", []):
-                albums.append({
+            r.raise_for_status()
+            out = []
+            for al in r.json().get("albums", {}).get("items", []):
+                out.append({
                     "id": al.get("id"),
                     "title": al.get("title", ""),
                     "artist": al.get("artist", {}).get("name", ""),
                     "cover_url": al.get("image", {}).get("large", ""),
                     "tracks_count": al.get("tracks_count", 0),
                     "release_date": al.get("release_date_original", ""),
+                    "year": (al.get("release_date_original") or "")[:4],
                     "hires": al.get("hires_streamable", False),
                     "source": "qobuz",
                     "service": "Qobuz",
                 })
-        except Exception:
-            pass
+            return out
+
+        with _TPE(max_workers=4) as _ex:
+            _ft  = _ex.submit(_do_qobuz_tracks)
+            _fa  = _ex.submit(_do_qobuz_artists)
+            _fal = _ex.submit(_do_qobuz_albums)
+            _fyt = _ex.submit(_youtube_search, q, 10)
+            try:     tracks    = _ft.result()
+            except Exception: tracks    = []
+            try:     artists   = _fa.result()
+            except Exception: artists   = []
+            try:     albums    = _fal.result()
+            except Exception: albums    = []
+            try:     yt_tracks = _fyt.result()
+            except Exception: yt_tracks = []
 
         if tracks or artists or albums:
-            # Also fetch YouTube Music results
-            yt_tracks = _youtube_search(q, limit=10)
             return jsonify({
                 "tracks": tracks, "artists": artists, "albums": albums,
                 "youtube_tracks": yt_tracks,
@@ -317,84 +330,96 @@ def search():
     except Exception:
         pass
 
-    # Fallback: iTunes Search API (free, no auth required)
+    # Fallback: iTunes Search API (free, no auth required) — all queries in parallel
     try:
-        # Search tracks
-        itunes_resp = http_requests.get(
-            "https://itunes.apple.com/search",
-            params={"term": q, "media": "music", "entity": "song", "limit": 20},
-            timeout=15,
-        )
-        itunes_resp.raise_for_status()
-        results = itunes_resp.json().get("results", [])
-        tracks = []
-        for t in results:
-            artwork = t.get("artworkUrl100", "")
-            if artwork:
-                artwork = artwork.replace("100x100bb", "600x600bb")
-            tracks.append({
-                "id": t.get("trackId"),
-                "title": t.get("trackName", ""),
-                "artist": t.get("artistName", ""),
-                "album": t.get("collectionName", ""),
-                "cover_url": artwork,
-                "duration_ms": t.get("trackTimeMillis", 0) or 0,
-                "isrc": "",
-                "hires": False,
-                "bit_depth": 0,
-                "sample_rate": 0,
-                "source": "itunes",
-                "service": "Apple Music",
-            })
+        from concurrent.futures import ThreadPoolExecutor as _TPE
 
-        # Search artists
-        artists = []
-        try:
-            ar = http_requests.get(
+        def _do_itunes_tracks():
+            r = http_requests.get(
+                "https://itunes.apple.com/search",
+                params={"term": q, "media": "music", "entity": "song", "limit": 20},
+                timeout=15,
+            )
+            r.raise_for_status()
+            out = []
+            for t in r.json().get("results", []):
+                artwork = t.get("artworkUrl100", "")
+                if artwork:
+                    artwork = artwork.replace("100x100bb", "600x600bb")
+                out.append({
+                    "id": t.get("trackId"),
+                    "title": t.get("trackName", ""),
+                    "artist": t.get("artistName", ""),
+                    "album": t.get("collectionName", ""),
+                    "cover_url": artwork,
+                    "duration_ms": t.get("trackTimeMillis", 0) or 0,
+                    "isrc": "",
+                    "hires": False,
+                    "bit_depth": 0,
+                    "sample_rate": 0,
+                    "year": (t.get("releaseDate") or "")[:4],
+                    "source": "itunes",
+                    "service": "Apple Music",
+                })
+            return out
+
+        def _do_itunes_artists():
+            r = http_requests.get(
                 "https://itunes.apple.com/search",
                 params={"term": q, "media": "music", "entity": "musicArtist", "limit": 5},
                 timeout=15,
             )
-            ar.raise_for_status()
-            for a in ar.json().get("results", []):
-                artists.append({
+            r.raise_for_status()
+            out = []
+            for a in r.json().get("results", []):
+                out.append({
                     "id": a.get("artistId"),
                     "name": a.get("artistName", ""),
                     "image_url": "",
                     "albums_count": 0,
                 })
-        except Exception:
-            pass
+            return out
 
-        # Search albums
-        albums = []
-        try:
-            alr = http_requests.get(
+        def _do_itunes_albums():
+            r = http_requests.get(
                 "https://itunes.apple.com/search",
                 params={"term": q, "media": "music", "entity": "album", "limit": 5},
                 timeout=15,
             )
-            alr.raise_for_status()
-            for al in alr.json().get("results", []):
+            r.raise_for_status()
+            out = []
+            for al in r.json().get("results", []):
                 art = al.get("artworkUrl100", "")
                 if art:
                     art = art.replace("100x100bb", "600x600bb")
-                albums.append({
+                out.append({
                     "id": al.get("collectionId"),
                     "title": al.get("collectionName", ""),
                     "artist": al.get("artistName", ""),
                     "cover_url": art,
                     "tracks_count": al.get("trackCount", 0),
                     "release_date": al.get("releaseDate", ""),
+                    "year": (al.get("releaseDate") or "")[:4],
                     "hires": False,
                     "source": "itunes",
                     "service": "Apple Music",
                 })
-        except Exception:
-            pass
+            return out
 
-        # Also fetch YouTube Music results
-        yt_tracks = _youtube_search(q, limit=10)
+        with _TPE(max_workers=4) as _ex:
+            _ft  = _ex.submit(_do_itunes_tracks)
+            _fa  = _ex.submit(_do_itunes_artists)
+            _fal = _ex.submit(_do_itunes_albums)
+            _fyt = _ex.submit(_youtube_search, q, 10)
+            try:     tracks    = _ft.result()
+            except Exception: tracks    = []
+            try:     artists   = _fa.result()
+            except Exception: artists   = []
+            try:     albums    = _fal.result()
+            except Exception: albums    = []
+            try:     yt_tracks = _fyt.result()
+            except Exception: yt_tracks = []
+
         return jsonify({
             "tracks": tracks, "artists": artists, "albums": albums,
             "youtube_tracks": yt_tracks,
@@ -466,6 +491,7 @@ def download():
         total_tracks=int(body.get("total_tracks", 0)),
         disc_number=int(body.get("disc_number", 0)),
         total_discs=int(body.get("total_discs", 0)),
+        year=str(body.get("year", ""))[:4],
     )
     return jsonify({"task_id": task_id})
 
@@ -490,6 +516,7 @@ def download_batch():
             total_tracks=int(t.get("total_tracks", 0)),
             disc_number=int(t.get("disc_number", 0)),
             total_discs=int(t.get("total_discs", 0)),
+            year=str(t.get("year", ""))[:4],
         )
         ids.append(task_id)
     return jsonify({"task_ids": ids})
@@ -522,6 +549,7 @@ def download_album():
             cover_url = album.get("image", {}).get("large", body.get("cover_url", ""))
             total_tracks = int(album.get("tracks_count", 0) or 0)
             total_discs = int(album.get("media_count", 0) or 0)
+            album_year = (album.get("release_date_original") or "")[:4]
 
             tracks = album.get("tracks", {}).get("items", [])
             if not tracks:
@@ -539,6 +567,7 @@ def download_album():
                     total_tracks=total_tracks,
                     disc_number=int(t.get("media_number", 0) or 1),
                     total_discs=total_discs,
+                    year=album_year,
                 )
                 task_ids.append(task_id)
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
@@ -563,6 +592,7 @@ def download_album():
             if not cover_url:
                 cover_url = tracks[0].get("artworkUrl100", "").replace("100x100bb", "600x600bb")
             total_tracks = int(tracks[0].get("trackCount", 0) or len(tracks))
+            album_year = (tracks[0].get("releaseDate") or "")[:4]
 
             for t in tracks:
                 task_id = download_manager.add_track(
@@ -576,6 +606,7 @@ def download_album():
                     total_tracks=total_tracks,
                     disc_number=int(t.get("discNumber", 0) or 1),
                     total_discs=int(t.get("discCount", 0) or 1),
+                    year=album_year,
                 )
                 task_ids.append(task_id)
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
@@ -874,4 +905,4 @@ def on_connect():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=3000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=4000, debug=True)
