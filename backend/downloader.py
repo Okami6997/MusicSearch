@@ -5,6 +5,7 @@ import tempfile
 import traceback
 import uuid
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from threading import Lock, Thread
@@ -131,12 +132,26 @@ class DownloadManager:
             self._thread.start()
 
     def _worker(self):
-        while True:
-            task = self._next_task()
-            if not task:
-                self._running = False
-                return
-            self._process(task)
+        max_workers = 3
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            while True:
+                tasks = self._get_queued_tasks(max_workers)
+                if not tasks:
+                    self._running = False
+                    return
+                
+                futures = {executor.submit(self._process, task): task for task in tasks}
+                for future in as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception:
+                        pass  # Exceptions already handled in _process
+
+    def _get_queued_tasks(self, limit: int) -> list[DownloadTask]:
+        """Get up to `limit` queued tasks."""
+        with self._lock:
+            queued = [t for t in self.tasks.values() if t.status == DownloadStatus.QUEUED]
+            return queued[:limit]
 
     def _next_task(self) -> Optional[DownloadTask]:
         with self._lock:

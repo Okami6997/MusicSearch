@@ -15,6 +15,7 @@ This release focuses on the top-priority workflow improvements: search results n
 - **Download: Missing metadata in download requests** — The frontend Download button was not passing `track_number`, `total_tracks`, or `disc_number` to the backend. These fields are now included in all download requests from search results.
 - **Download: Fallback when ISRC-only resolution fails** — When only an ISRC is available and Deezer/SongLink resolution fails, the downloader now falls back to Qobuz ISRC search to populate title/artist, enabling YouTube text-search as a last-resort download source.
 - **Download: Preferred source priority** — Simplified and fixed the `_ordered_sources` logic so the user's preferred download service is always tried first (when it has data), followed by other services with data, then remaining services. The preferred source is always included in the list even if it initially lacks data.
+- **Download: Queue worker was processing one task at a time** — The download worker now processes multiple queued tasks concurrently via `ThreadPoolExecutor` (default 3 workers), enabling true parallel downloads instead of sequential processing.
 
 ### New Features
 
@@ -38,7 +39,7 @@ This release focuses on the top-priority workflow improvements: search results n
 ### Files Changed
 
 - `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album/YouTube search for Qobuz and iTunes; search queries now run concurrently with ThreadPoolExecutor (4 workers); added service metadata fields and year parameter; new `/api/download/album` endpoint; scheduled remux APIs with background scheduler worker
-- `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering; added year field to DownloadTask; generates Lidarr-compatible paths `Artist/Album (Year)/NN - Title.flac`
+- `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering; added year field to DownloadTask; generates Lidarr-compatible paths `Artist/Album (Year)/NN - Title.flac`; queue worker now runs downloads concurrently using `ThreadPoolExecutor` (3 workers)
 - `backend/youtube.py` — Added `search_tracks()` method for YouTube Music search page scraping
 - `backend/resample.py` — Uses subprocess FFmpeg calls only (removed ffmpeg-python PyPI wrapper dependency)
 - `requirements.txt` — Removed `ffmpeg-python` dependency
