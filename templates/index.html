@@ -148,6 +148,17 @@
                 </div>
                 <button id="btn-resample" class="btn-primary" disabled>Resample</button>
             </div>
+            <div class="resample-scheduler" style="margin-top:14px">
+                <h3 style="margin-bottom:8px">Schedule Remux</h3>
+                <div class="toolbar">
+                    <input type="text" id="resample-schedule-name" class="path-input" placeholder="Job name (optional)">
+                    <input type="datetime-local" id="resample-schedule-at" class="settings-input" style="max-width:260px">
+                    <button id="btn-schedule-resample" class="btn-ghost" disabled>Schedule</button>
+                </div>
+                <div id="resample-schedules" class="schedule-list">
+                    <p class="text-muted">No scheduled remux jobs.</p>
+                </div>
+            </div>
             <div id="resample-result" class="resample-result hidden"></div>
         </div>
 

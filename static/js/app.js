@@ -7,6 +7,7 @@
     let queueData = [];
     let loadedAudioFiles = [];
     let resampleFiles = [];
+    let scheduledResampleJobs = [];
     const socket = io();
 
     // ── DOM refs ────────────────────────────────────────────
@@ -63,14 +64,20 @@
             const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            renderSearchResults(data.tracks || [], data.artists || [], data.albums || [], data.youtube_tracks || []);
+            renderSearchResults(
+                data.tracks || [],
+                data.artists || [],
+                data.albums || [],
+                data.youtube_tracks || [],
+                data.source || ""
+            );
         } catch (e) {
             toast(e.message, "error");
             showEmpty();
         }
     }
 
-    function renderSearchResults(tracks, artists, albums, youtubeTracks) {
+    function renderSearchResults(tracks, artists, albums, youtubeTracks, searchSource) {
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
@@ -108,7 +115,10 @@
                     <div class="track-info">
                         <div class="track-title">${esc(al.title)}</div>
                         <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
-                        ${al.hires ? '<div class="track-meta">Hi-Res</div>' : ''}
+                        <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
+                    </div>
+                    <div class="track-actions album-actions">
+                        <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
                     </div>
                 </div>
             `).join("");
@@ -125,7 +135,7 @@
                     <div class="track-info">
                         <div class="track-title">${esc(t.title)}</div>
                         <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                        <div class="track-meta">${t.isrc ? 'ISRC: ' + esc(t.isrc) : ''}${t.hires ? ' · Hi-Res' : ''}${t.sample_rate ? ' · ' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit' : ''}</div>
+                        <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
@@ -146,7 +156,7 @@
                     <div class="track-info">
                         <div class="track-title">${esc(t.title || t.id)}</div>
                         <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                        <div class="track-meta">YouTube Music · MP3 320kbps</div>
+                        <div class="track-meta">${serviceBadge(t.service || 'YouTube Music')} <span>MP3 320kbps</span></div>
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
@@ -228,6 +238,32 @@
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             toast(`"${title || url || isrc}" added to queue`, "success");
+            updateQueueBadge();
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    };
+
+    window.sfDownloadAlbum = async function (albumId, source, album, artist, coverUrl) {
+        if (!albumId) {
+            toast("Missing album id", "error");
+            return;
+        }
+        try {
+            const resp = await fetch("/api/download/album", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    album_id: albumId,
+                    source,
+                    album,
+                    artist,
+                    cover_url: coverUrl,
+                }),
+            });
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            toast(`Queued ${data.count || 0} album tracks`, "success");
             updateQueueBadge();
         } catch (e) {
             toast(e.message, "error");
@@ -453,6 +489,7 @@
     // ── Resample ────────────────────────────────────────────
     $("#btn-load-resample").addEventListener("click", loadResampleFiles);
     $("#btn-resample").addEventListener("click", doResample);
+    $("#btn-schedule-resample").addEventListener("click", scheduleResample);
 
     async function loadResampleFiles() {
         const dir = $("#resample-dir").value.trim();
@@ -478,6 +515,7 @@
                 </div>
             `).join("");
             $("#btn-resample").disabled = false;
+            $("#btn-schedule-resample").disabled = false;
         } catch (e) {
             toast(e.message, "error");
         }
@@ -506,6 +544,85 @@
             toast(e.message, "error");
         }
     }
+
+    async function scheduleResample() {
+        if (!resampleFiles.length) {
+            toast("Load files first", "error");
+            return;
+        }
+        const rate = $("#resample-rate").value;
+        const bits = $("#resample-bits").value;
+        const runAt = $("#resample-schedule-at").value;
+        const name = $("#resample-schedule-name").value.trim() || "Scheduled Remux";
+        if (!rate && !bits) { toast("Select sample rate or bit depth", "error"); return; }
+        if (!runAt) { toast("Choose a schedule time", "error"); return; }
+
+        try {
+            const resp = await fetch("/api/resample/schedule", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    files: resampleFiles,
+                    sample_rate: rate,
+                    bit_depth: bits,
+                    run_at: runAt,
+                    name,
+                }),
+            });
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            toast("Scheduled remux created", "success");
+            $("#resample-schedule-name").value = "";
+            await refreshResampleSchedules();
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    }
+
+    async function refreshResampleSchedules() {
+        try {
+            const resp = await fetch("/api/resample/schedule");
+            const jobs = await resp.json();
+            scheduledResampleJobs = jobs;
+            renderResampleSchedules();
+        } catch (e) {
+            // ignore silently
+        }
+    }
+
+    function renderResampleSchedules() {
+        const el = $("#resample-schedules");
+        if (!el) return;
+        if (!scheduledResampleJobs.length) {
+            el.innerHTML = '<p class="text-muted">No scheduled remux jobs.</p>';
+            return;
+        }
+        el.innerHTML = scheduledResampleJobs.map((j) => {
+            const when = j.run_at ? new Date(j.run_at * 1000).toLocaleString() : "-";
+            return `<div class="schedule-row">
+                <div class="schedule-main">
+                    <div class="track-title">${esc(j.name || "Scheduled Remux")}</div>
+                    <div class="track-meta"><span>${esc(j.status || "scheduled")}</span> <span>${esc(when)}</span> <span>${(j.files || []).length} files</span></div>
+                    ${j.error ? `<div class="text-danger">${esc(j.error)}</div>` : ""}
+                </div>
+                <div class="track-actions">
+                    ${j.status === "running" ? "" : `<button class="btn-ghost" onclick="window.sfDeleteScheduledResample('${esc(j.id)}')">Delete</button>`}
+                </div>
+            </div>`;
+        }).join("");
+    }
+
+    window.sfDeleteScheduledResample = async function (jobId) {
+        try {
+            const resp = await fetch(`/api/resample/schedule/${encodeURIComponent(jobId)}`, { method: "DELETE" });
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            toast("Schedule deleted", "success");
+            await refreshResampleSchedules();
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    };
 
     // ── History ─────────────────────────────────────────────
     $("#btn-clear-history").addEventListener("click", async () => {
@@ -684,6 +801,8 @@
         } catch (e) { /* ignore */ }
     }
     fillDownloadDir();
+    refreshResampleSchedules();
+    setInterval(refreshResampleSchedules, 30000);
 
     // ── Helpers ──────────────────────────────────────────────
     function showLoading() { hideAll(); loading.classList.remove("hidden"); }
@@ -716,6 +835,11 @@
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML.replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+    }
+
+    function serviceBadge(name) {
+        if (!name) return "";
+        return `<span class="service-badge">${esc(name)}</span>`;
     }
 
     function toast(msg, type = "") {

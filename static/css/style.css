@@ -226,6 +226,18 @@ input, select { font: inherit; color: inherit; }
 
 /* ── Track meta line ─────────────────────────────────────────── */
 .track-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.track-meta span { margin-right: 8px; }
+.service-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+}
+.album-actions { justify-content: flex-end; }
 
 /* ── Search Results Sections ────────────────────────────────── */
 .results-section { margin-bottom: 20px; }
@@ -284,6 +296,18 @@ input, select { font: inherit; color: inherit; }
 /* ── Resample ────────────────────────────────────────────────── */
 .resample-options { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 .resample-result { margin-top: 12px; }
+.schedule-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.schedule-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+}
+.schedule-main { min-width: 0; }
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {

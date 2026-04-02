@@ -2,6 +2,8 @@
 
 ## v1.1.0 (Unreleased)
 
+This release focuses on the top-priority workflow improvements: search results now clearly show source services, albums can be queued for full download in one click, and remux operations can be scheduled to run at a future date/time from the UI.
+
 ### Bug Fixes
 
 - **Download: Double JSON parse on Deezer response** — The ISRC→Deezer lookup was calling `dr.json()` twice (once for the `id` check, once for the `link`), which could fail on some response types. Now parses JSON once into `deezer_data` and reuses it.
@@ -19,12 +21,17 @@
 - **Search: Artist and album results** — The search API now returns artists and albums alongside tracks. Qobuz search queries the `/artist/search` and `/album/search` endpoints (up to 5 results each). The iTunes fallback also searches for artists (`musicArtist` entity) and albums (`album` entity).
 - **Search: YouTube Music results** — Search results now include a dedicated YouTube Music section. A new `search_tracks()` method on `YouTubeDownloader` scrapes YouTube Music's search page and parses `ytInitialData` JSON to extract video IDs, titles, artists, albums, and thumbnails. Results are labeled "YouTube Music · MP3 320kbps" and download directly via YouTube URL.
 - **URL Resolve: YouTube Music and Spotify in platform availability** — The URL resolve view now displays 6 platforms (Tidal, Spotify, Amazon Music, Qobuz, Deezer, YouTube Music) instead of the previous 4. The download button also prefers URLs in order: Tidal → Spotify → Amazon → YouTube.
+- **Search: Service labels in results** — Search results now display the source service (for example Qobuz, Apple Music, YouTube Music) as badges on tracks and albums so users can immediately see where each result comes from.
+- **Download: Album download endpoint and UI action** — Added `POST /api/download/album` to expand album results into per-track queue items and queue them in one action. The Albums section now includes a "Download Album" button.
+- **Resample: Scheduled remux jobs** — Added scheduled remux support with create/list/delete APIs and a background scheduler worker. Users can now choose a future date/time to run batch remux jobs from the Resample tab.
 
 ### UI Improvements
 
 - **Search results sections** — Search results are now organized into labeled sections: Artists, Albums, Tracks, and YouTube Music, each with a styled heading and separator.
 - **Artist display** — Artists are shown with a circular avatar image and album count.
 - **Album display** — Albums show cover art, artist name, track count, release year, and a Hi-Res badge when applicable.
+- **Search: Service badges** — Added compact service badges on search results and metadata rows.
+- **Resample: Scheduler panel** — Added schedule name and datetime inputs plus a live schedule list with status and delete actions.
 
 ### Files Changed
 
@@ -33,6 +40,10 @@
 - `backend/youtube.py` — Added `search_tracks()` method for YouTube Music search page scraping
 - `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number
 - `static/css/style.css` — Added `.results-section` and `.results-heading` styles
+- `app.py` — Added service metadata fields in search payloads, album download endpoint (`/api/download/album`), and scheduled remux APIs (`/api/resample/schedule`, `/api/resample/schedule/<job_id>`) with a background scheduler worker
+- `static/js/app.js` — Added service badge rendering, album-level download action, and scheduled remux create/list/delete logic with periodic refresh
+- `templates/index.html` — Added scheduled remux controls on the Resample page (job name, schedule datetime, action button, schedule list)
+- `static/css/style.css` — Added styles for service badges, album action alignment, and scheduled remux list rows
 
 ---
 

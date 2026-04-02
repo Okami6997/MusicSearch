@@ -1,6 +1,10 @@
 """SongsFetch - Flask web application for music search and download."""
 
 import os
+import time
+import uuid
+from datetime import datetime
+from threading import Lock, Thread
 
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -41,6 +45,10 @@ settings = {
     "quality": "LOSSLESS",
     "embed_lyrics": True,
 }
+scheduler_jobs: dict[str, dict] = {}
+scheduler_lock = Lock()
+_scheduler_running = False
+_scheduler_thread: Thread | None = None
 
 
 def _init_download_manager():
@@ -58,8 +66,79 @@ def _on_progress(task_data: dict):
     socketio.emit("download_progress", task_data)
 
 
+def _parse_schedule_time(value: str) -> datetime:
+    # Accepts ISO 8601 or HTML datetime-local values.
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone().replace(tzinfo=None)
+    return dt
+
+
+def _execute_scheduled_resample(job_id: str):
+    with scheduler_lock:
+        job = scheduler_jobs.get(job_id)
+        if not job:
+            return
+        job["status"] = "running"
+        job["last_run"] = int(time.time())
+        job["error"] = ""
+
+    try:
+        results = resample.resample_audio(
+            job["files"],
+            job["sample_rate"],
+            job["bit_depth"],
+        )
+        success = sum(1 for r in results if r.get("success"))
+        details = [f"Scheduled job: {job['name']}"]
+        if job["sample_rate"]:
+            details.append(f"Sample rate: {job['sample_rate']} Hz")
+        if job["bit_depth"]:
+            details.append(f"Bit depth: {job['bit_depth']}-bit")
+        details.append(f"Success: {success}/{len(results)}")
+        history.add_operation("resample_scheduled", job["files"], ", ".join(details))
+        with scheduler_lock:
+            if job_id in scheduler_jobs:
+                scheduler_jobs[job_id]["status"] = "completed"
+    except Exception as e:
+        with scheduler_lock:
+            if job_id in scheduler_jobs:
+                scheduler_jobs[job_id]["status"] = "failed"
+                scheduler_jobs[job_id]["error"] = str(e)
+
+
+def _scheduler_worker():
+    global _scheduler_running
+    while True:
+        due_ids = []
+        now = datetime.now()
+        with scheduler_lock:
+            for job_id, job in scheduler_jobs.items():
+                if job.get("status") != "scheduled":
+                    continue
+                run_at = datetime.fromtimestamp(job["run_at"])
+                if run_at <= now:
+                    due_ids.append(job_id)
+                    job["status"] = "queued"
+
+        for job_id in due_ids:
+            Thread(target=_execute_scheduled_resample, args=(job_id,), daemon=True).start()
+
+        time.sleep(10)
+
+
+def _ensure_scheduler_running():
+    global _scheduler_running, _scheduler_thread
+    if _scheduler_running:
+        return
+    _scheduler_running = True
+    _scheduler_thread = Thread(target=_scheduler_worker, daemon=True)
+    _scheduler_thread.start()
+
+
 _init_download_manager()
 history.init_db()
+_ensure_scheduler_running()
 youtube_client = YouTubeDownloader()
 
 
@@ -82,6 +161,7 @@ def _youtube_search(q: str, limit: int = 10) -> list[dict]:
                 "sample_rate": 0,
                 "url": r.get("url", ""),
                 "source": "youtube",
+                "service": "YouTube Music",
             })
         return tracks
     except Exception:
@@ -178,6 +258,8 @@ def search():
                 "track_number": t.get("track_number", 0),
                 "total_tracks": t.get("album", {}).get("tracks_count", 0),
                 "disc_number": t.get("media_number", 0) or 1,
+                "source": "qobuz",
+                "service": "Qobuz",
             })
 
         # Search artists
@@ -218,6 +300,8 @@ def search():
                     "tracks_count": al.get("tracks_count", 0),
                     "release_date": al.get("release_date_original", ""),
                     "hires": al.get("hires_streamable", False),
+                    "source": "qobuz",
+                    "service": "Qobuz",
                 })
         except Exception:
             pass
@@ -259,6 +343,8 @@ def search():
                 "hires": False,
                 "bit_depth": 0,
                 "sample_rate": 0,
+                "source": "itunes",
+                "service": "Apple Music",
             })
 
         # Search artists
@@ -301,6 +387,8 @@ def search():
                     "tracks_count": al.get("trackCount", 0),
                     "release_date": al.get("releaseDate", ""),
                     "hires": False,
+                    "source": "itunes",
+                    "service": "Apple Music",
                 })
         except Exception:
             pass
@@ -407,6 +495,96 @@ def download_batch():
     return jsonify({"task_ids": ids})
 
 
+@app.route("/api/download/album", methods=["POST"])
+def download_album():
+    body = request.get_json(silent=True) or {}
+    album_id = str(body.get("album_id", "")).strip()
+    source = str(body.get("source", "qobuz")).strip().lower()
+    if not album_id:
+        return jsonify({"error": "album_id required"}), 400
+
+    task_ids = []
+
+    if source == "qobuz":
+        try:
+            from backend.qobuz import QobuzDownloader
+
+            qobuz = QobuzDownloader()
+            resp = qobuz.session.get(
+                "https://www.qobuz.com/api.json/0.2/album/get",
+                params={"album_id": album_id, "app_id": qobuz.APP_ID},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            album = resp.json()
+            title = album.get("title", body.get("album", ""))
+            artist = album.get("artist", {}).get("name", body.get("artist", ""))
+            cover_url = album.get("image", {}).get("large", body.get("cover_url", ""))
+            total_tracks = int(album.get("tracks_count", 0) or 0)
+            total_discs = int(album.get("media_count", 0) or 0)
+
+            tracks = album.get("tracks", {}).get("items", [])
+            if not tracks:
+                return jsonify({"error": "No tracks found for this album"}), 404
+
+            for t in tracks:
+                task_id = download_manager.add_track(
+                    isrc=t.get("isrc", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("performer", {}).get("name", "") or artist,
+                    album=title,
+                    cover_url=cover_url,
+                    duration_ms=int((t.get("duration", 0) or 0) * 1000),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=total_tracks,
+                    disc_number=int(t.get("media_number", 0) or 1),
+                    total_discs=total_discs,
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"Qobuz album fetch failed: {str(e)}"}), 500
+
+    if source in ("itunes", "apple", "apple_music"):
+        try:
+            lookup = http_requests.get(
+                "https://itunes.apple.com/lookup",
+                params={"id": album_id, "entity": "song"},
+                timeout=20,
+            )
+            lookup.raise_for_status()
+            rows = lookup.json().get("results", [])
+            tracks = [r for r in rows if r.get("wrapperType") == "track"]
+            if not tracks:
+                return jsonify({"error": "No tracks found for this album"}), 404
+
+            album_name = tracks[0].get("collectionName", body.get("album", ""))
+            cover_url = body.get("cover_url", "")
+            if not cover_url:
+                cover_url = tracks[0].get("artworkUrl100", "").replace("100x100bb", "600x600bb")
+            total_tracks = int(tracks[0].get("trackCount", 0) or len(tracks))
+
+            for t in tracks:
+                task_id = download_manager.add_track(
+                    url=t.get("trackViewUrl", ""),
+                    title=t.get("trackName", ""),
+                    artist=t.get("artistName", ""),
+                    album=album_name,
+                    cover_url=cover_url,
+                    duration_ms=int(t.get("trackTimeMillis", 0) or 0),
+                    track_number=int(t.get("trackNumber", 0) or 0),
+                    total_tracks=total_tracks,
+                    disc_number=int(t.get("discNumber", 0) or 1),
+                    total_discs=int(t.get("discCount", 0) or 1),
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"Apple Music album fetch failed: {str(e)}"}), 500
+
+    return jsonify({"error": f"Album download not supported for source: {source}"}), 400
+
+
 @app.route("/api/queue", methods=["GET"])
 def queue():
     return jsonify(download_manager.get_queue())
@@ -493,6 +671,68 @@ def resample_info():
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/resample/schedule", methods=["GET"])
+def resample_schedule_list():
+    with scheduler_lock:
+        jobs = list(scheduler_jobs.values())
+    jobs.sort(key=lambda j: j.get("run_at", 0))
+    return jsonify(jobs)
+
+
+@app.route("/api/resample/schedule", methods=["POST"])
+def resample_schedule_create():
+    body = request.get_json(silent=True) or {}
+    files = body.get("files", [])
+    sample_rate = str(body.get("sample_rate", "")).strip()
+    bit_depth = str(body.get("bit_depth", "")).strip()
+    run_at_raw = str(body.get("run_at", "")).strip()
+    name = str(body.get("name", "Scheduled Remux")).strip() or "Scheduled Remux"
+
+    if not files:
+        return jsonify({"error": "files required"}), 400
+    if not sample_rate and not bit_depth:
+        return jsonify({"error": "sample_rate or bit_depth required"}), 400
+    if not run_at_raw:
+        return jsonify({"error": "run_at required"}), 400
+
+    try:
+        run_at_dt = _parse_schedule_time(run_at_raw)
+    except Exception:
+        return jsonify({"error": "run_at must be ISO datetime"}), 400
+
+    if run_at_dt <= datetime.now():
+        return jsonify({"error": "run_at must be in the future"}), 400
+
+    job_id = str(uuid.uuid4())[:8]
+    job = {
+        "id": job_id,
+        "name": name,
+        "files": files,
+        "sample_rate": sample_rate,
+        "bit_depth": bit_depth,
+        "run_at": int(run_at_dt.timestamp()),
+        "status": "scheduled",
+        "error": "",
+        "created_at": int(time.time()),
+        "last_run": 0,
+    }
+    with scheduler_lock:
+        scheduler_jobs[job_id] = job
+    return jsonify(job)
+
+
+@app.route("/api/resample/schedule/<job_id>", methods=["DELETE"])
+def resample_schedule_delete(job_id: str):
+    with scheduler_lock:
+        job = scheduler_jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "schedule not found"}), 404
+        if job.get("status") == "running":
+            return jsonify({"error": "cannot delete a running schedule"}), 409
+        del scheduler_jobs[job_id]
+    return jsonify({"ok": True})
 
 
 # ── File Manager routes ──────────────────────────────────────

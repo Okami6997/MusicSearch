@@ -1,0 +1,37 @@
+### Currently Pending Tasks:
+- [x] Show the service associated with the results (e.g., Spotify, Apple Music) in the search results
+- [x] Implement Scheduled Remux functionality
+- [x] Implement Album download functionality
+- [ ] Use Parallel processing for faster search results, using asyncio.
+- [ ] Use Pypi for remuxing in conjuction with ffmpeg for better performance and reliability.
+- [ ] Add support for downloading playlists
+- [ ] Integrate with Spotify API for metadata retrieval
+- [ ] Create a user-friendly interface for selecting download options
+- [ ] Optimize download speed and performance
+- [ ] Implement error handling for failed downloads
+- [ ] Add support for downloading from additional music streaming services
+- [ ] Create a feature to manage downloaded music (e.g., organize by artist, album
+- [ ] Implement a feature to automatically update the music library with new releases
+- [ ] Add a feature to allow users to customize the download quality (e.g., bitrate)
+- [ ] Implement a feature to allow users to download music in different formats (e.g., MP3, FLAC)
+- [ ] Create a feature to allow users to download music with album art and metadata
+- [ ] Implement a feature to allow users to download music with lyrics
+- [ ] Add a feature to allow users to download music with embedded metadata (e.g., genre, release date)
+- [ ] Implement a feature to allow users to download music with embedded album information (e.g., track number, disc number)
+- [ ] Create a feature to allow users to download music with embedded artist information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded composer information (e.g., name, biography)
+- [ ] Add a feature to allow users to download music with embedded publisher information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded copyright information (e.g., name, biography)
+- [ ] Create a feature to allow users to download music with embedded license information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded mood information (e.g., name, biography)
+- [ ] Add a feature to allow users to download music with embedded theme information (e.g., name, biography)
+- [ ]Implement a feature to allow users to download music with embedded tempo information (e.g., name, biography)
+- [ ] Create a feature to allow users to download music with embedded key information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded time signature information (e.g., name, biography)
+- [ ] Add a feature to allow users to download music with embedded instrumentation information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded vocal information (e.g., name, biography)
+- [ ] Create a feature to allow users to download music with embedded genre information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded release date information (e.g., name, biography)
+- [ ] Add a feature to allow users to download music with embedded popularity information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded danceability information (e.g., name, biography)
+- [ ] Create a feature to allow users to download music with embedded energy information (e.g., name, biography)
