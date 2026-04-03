@@ -212,6 +212,23 @@ def get_file_sizes(files: list[str]) -> dict[str, int]:
     return {fp: os.path.getsize(fp) for fp in files if os.path.isfile(fp)}
 
 
+def delete_files(files: list[str]) -> list[dict]:
+    """Delete audio files. Returns list of {path, success, error}."""
+    results = []
+    for fp in files:
+        result = {"path": fp, "success": False, "error": ""}
+        try:
+            if not os.path.isfile(fp):
+                result["error"] = "File not found"
+            else:
+                os.remove(fp)
+                result["success"] = True
+        except Exception as e:
+            result["error"] = str(e)
+        results.append(result)
+    return results
+
+
 # ── Helpers ──────────────────────────────────────────────────
 
 def _first(tags, key: str) -> str:

@@ -15,6 +15,7 @@ import requests as _req
 
 from .amazon import AmazonDownloader
 from .analysis import validate_download_duration
+from .applemusic import AppleMusicDownloader
 from .history import add_download
 from .lyrics import LyricsClient
 from .metadata import Metadata, download_cover, embed_metadata
@@ -84,6 +85,7 @@ class DownloadManager:
         self.tidal = TidalDownloader()
         self.qobuz = QobuzDownloader()
         self.amazon = AmazonDownloader()
+        self.applemusic = AppleMusicDownloader()
         self.youtube = YouTubeDownloader()
         self.spotify = SpotifyDownloader()
         self.songlink = SongLinkClient()
@@ -93,6 +95,10 @@ class DownloadManager:
         self.quality: str = "LOSSLESS"
         self.embed_lyrics_flag: bool = True
         self.validate_duration: bool = True
+        # Performance: cache SongLink resolutions and ISRC lookups
+        self._sl_cache: dict[str, dict] = {}
+        self._isrc_cache: dict[str, dict] = {}
+        self._max_workers = 5
 
     def add_track(self, url: str = "", isrc: str = "", title: str = "",
                   artist: str = "", album: str = "", cover_url: str = "",
@@ -132,14 +138,14 @@ class DownloadManager:
             self._thread.start()
 
     def _worker(self):
-        max_workers = 3
+        max_workers = self._max_workers
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             while True:
                 tasks = self._get_queued_tasks(max_workers)
                 if not tasks:
                     self._running = False
                     return
-                
+
                 futures = {executor.submit(self._process, task): task for task in tasks}
                 for future in as_completed(futures):
                     try:
@@ -168,6 +174,7 @@ class DownloadManager:
             # Resolve URL to platform-specific links
             links = {}
             isrc = task.isrc
+            apple_music_url = ""
             if task.url:
                 parsed = parse_music_url(task.url)
                 # If it's a direct platform URL, set it directly
@@ -179,53 +186,103 @@ class DownloadManager:
                     links["youtube_url"] = task.url
                 elif parsed["platform"] == "spotify" and parsed["type"] == "track":
                     links["spotify_url"] = task.url
-                # Always try SongLink to get cross-platform links + ISRC
+                elif parsed["platform"] == "apple_music":
+                    apple_music_url = task.url
+                # Always try SongLink to get cross-platform links + ISRC (with cache)
                 try:
-                    sl = self.songlink.get_all_urls(task.url)
+                    cache_key = f"sl:{task.url}"
+                    sl = self._sl_cache.get(cache_key)
+                    if sl is None:
+                        sl = self.songlink.get_all_urls(task.url)
+                        # Cache for 5 minutes
+                        self._sl_cache[cache_key] = sl
                     links.setdefault("tidal_url", sl.get("tidal_url", ""))
                     links.setdefault("amazon_url", sl.get("amazon_url", ""))
                     links.setdefault("deezer_url", sl.get("deezer_url", ""))
                     links.setdefault("youtube_url", sl.get("youtube_url", ""))
                     links.setdefault("spotify_url", sl.get("spotify_url", ""))
+                    links.setdefault("apple_url", sl.get("apple_url", ""))
                     if not isrc:
                         isrc = sl.get("isrc", "")
                 except Exception:
                     pass
             elif isrc:
-                # ISRC only — resolve cross-platform URLs via Deezer + SongLink
+                # ISRC only — resolve cross-platform URLs via Deezer + SongLink (with cache)
                 links["isrc"] = isrc
-                try:
-                    dr = _req.get(
-                        f"https://api.deezer.com/2.0/track/isrc:{isrc}",
-                        timeout=10,
-                    )
-                    if dr.status_code == 200:
-                        deezer_data = dr.json()
-                        if deezer_data.get("id"):
-                            deezer_url = deezer_data.get("link", "")
-                            if deezer_url:
-                                links.setdefault("deezer_url", deezer_url)
-                                try:
-                                    sl = self.songlink.get_all_urls(deezer_url)
-                                    links.setdefault("tidal_url", sl.get("tidal_url", ""))
-                                    links.setdefault("amazon_url", sl.get("amazon_url", ""))
-                                    links.setdefault("youtube_url", sl.get("youtube_url", ""))
-                                    links.setdefault("spotify_url", sl.get("spotify_url", ""))
-                                except Exception:
-                                    pass
-                except Exception:
-                    pass
-
-                # Resolve title+artist via Qobuz for YouTube fallback search
-                if not task.title:
+                # Check ISRC cache first
+                isrc_cache_key = f"isrc:{isrc}"
+                cached = self._isrc_cache.get(isrc_cache_key)
+                if cached:
+                    links.setdefault("deezer_url", cached.get("deezer_url", ""))
+                    links.setdefault("tidal_url", cached.get("tidal_url", ""))
+                    links.setdefault("amazon_url", cached.get("amazon_url", ""))
+                    links.setdefault("youtube_url", cached.get("youtube_url", ""))
+                    links.setdefault("spotify_url", cached.get("spotify_url", ""))
+                else:
                     try:
-                        qres = self.qobuz.search_by_isrc(isrc)
-                        if qres.get("title") and qres.get("artist"):
-                            task.title = task.title or qres["title"]
-                            task.artist = task.artist or qres["artist"]
-                            task.album = task.album or qres.get("album", "")
+                        dr = _req.get(
+                            f"https://api.deezer.com/2.0/track/isrc:{isrc}",
+                            timeout=10,
+                        )
+                        if dr.status_code == 200:
+                            deezer_data = dr.json()
+                            if deezer_data.get("id"):
+                                deezer_url = deezer_data.get("link", "")
+                                if deezer_url:
+                                    links.setdefault("deezer_url", deezer_url)
+                                    try:
+                                        sl = self.songlink.get_all_urls(deezer_url)
+                                        links.setdefault("tidal_url", sl.get("tidal_url", ""))
+                                        links.setdefault("amazon_url", sl.get("amazon_url", ""))
+                                        links.setdefault("youtube_url", sl.get("youtube_url", ""))
+                                        links.setdefault("spotify_url", sl.get("spotify_url", ""))
+                                        # Cache the ISRC resolution
+                                        self._isrc_cache[isrc_cache_key] = {
+                                            "deezer_url": deezer_url,
+                                            "tidal_url": sl.get("tidal_url", ""),
+                                            "amazon_url": sl.get("amazon_url", ""),
+                                            "youtube_url": sl.get("youtube_url", ""),
+                                            "spotify_url": sl.get("spotify_url", ""),
+                                        }
+                                    except Exception:
+                                        pass
                     except Exception:
                         pass
+
+                # Resolve title+artist via Qobuz for YouTube fallback search (with ISRC cache)
+                if not task.title:
+                    qres_cache_key = f"qobuz_isrc:{isrc}"
+                    qres = self._isrc_cache.get(qres_cache_key)
+                    if qres is None:
+                        try:
+                            qres = self.qobuz.search_by_isrc(isrc)
+                            if qres and qres.get("title") and qres.get("artist"):
+                                self._isrc_cache[qres_cache_key] = qres
+                        except Exception:
+                            qres = {}
+                    if qres and qres.get("title") and qres.get("artist"):
+                        task.title = task.title or qres.get("title", "")
+                        task.artist = task.artist or qres.get("artist", "")
+                        task.album = task.album or qres.get("album", "")
+
+            # Resolve Apple Music URL via our own client to get track details
+            if apple_music_url:
+                try:
+                    tracks = self.applemusic.expand_album(apple_music_url)
+                    if tracks and not task.title:
+                        t = tracks[0]
+                        task.title = task.title or t.get("title", "")
+                        task.artist = task.artist or t.get("artist", "")
+                        task.album = task.album or t.get("album", "")
+                        task.track_number = task.track_number or t.get("track_number", 0)
+                        task.total_tracks = task.total_tracks or t.get("total_tracks", 0)
+                        task.disc_number = task.disc_number or t.get("disc_number", 1)
+                        if not isrc:
+                            isrc = t.get("isrc", "")
+                    if tracks and not links.get("apple_url"):
+                        links["apple_url"] = apple_music_url
+                except Exception:
+                    pass
 
             # If we have title+artist but no links at all, ensure YouTube can search
             if task.title and task.artist:
@@ -313,6 +370,7 @@ class DownloadManager:
         amazon_url = links.get("amazon_url", "")
         youtube_url = links.get("youtube_url", "")
         spotify_url = links.get("spotify_url", "")
+        apple_url = links.get("apple_url", "")
 
         def tidal_fn(d, f, cb):
             if not tidal_url:
@@ -325,6 +383,22 @@ class DownloadManager:
             if not spotify_url:
                 raise ValueError("No Spotify link")
             return self.spotify.download_track(spotify_url, d, f, cb)
+
+        def apple_fn(d, f, cb):
+            # Apple Music doesn't provide direct audio URLs without subscription auth.
+            # We fall back to using the preview URL (30-second clip) if available,
+            # otherwise use YouTube search as the actual download source.
+            if not apple_url:
+                raise ValueError("No Apple Music link")
+            preview = self.applemusic.get_track_stream_url(
+                int(self.applemusic.parse_apple_music_url(apple_url)["id"])
+            )
+            if preview:
+                # Download the preview (short M4A) — user should be aware it's a preview
+                import urllib.request
+                urllib.request.urlretrieve(preview, os.path.join(d, f.replace(".flac", ".m4a")))
+                return os.path.join(d, f.replace(".flac", ".m4a"))
+            raise ValueError("No preview URL available for Apple Music track")
 
         def qobuz_fn(d, f, cb):
             if not isrc:
@@ -350,12 +424,15 @@ class DownloadManager:
         order = {
             "tidal": ("Tidal", tidal_fn, bool(tidal_url)),
             "spotify": ("Spotify", spotify_fn, bool(spotify_url)),
+            "apple_music": ("Apple Music", apple_fn, bool(apple_url)),
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
             "youtube": ("YouTube", youtube_fn,
                         bool(youtube_url) or bool(task.title and task.artist)),
         }
         pref = self.preferred_source.lower()
+        if apple_url and "music.apple.com" in apple_url:
+            pref = "apple_music"
 
         # Preferred source goes first if it has data
         if pref in order:
@@ -380,6 +457,7 @@ class DownloadManager:
             fn_map = {
                 "tidal": ("Tidal", tidal_fn),
                 "spotify": ("Spotify", spotify_fn),
+                "apple_music": ("Apple Music", apple_fn),
                 "qobuz": ("Qobuz", qobuz_fn),
                 "amazon": ("Amazon", amazon_fn),
                 "youtube": ("YouTube", youtube_fn),

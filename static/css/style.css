@@ -339,12 +339,328 @@ input, select { font: inherit; color: inherit; }
 
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 640px) {
-    .main { padding: 16px; }
-    .detail-header { flex-direction: column; align-items: center; text-align: center; }
-    .detail-cover { width: 160px; height: 160px; }
-    .detail-info { align-items: center; }
-    .cards-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-    .track-row { grid-template-columns: 40px 1fr auto; }
-    .track-duration { display: none; }
-    .nav-tabs { flex-wrap: wrap; }
+    :root {
+        --radius: 6px;
+        --radius-lg: 10px;
+    }
+    
+    html, body {
+        font-size: 14px;
+    }
+    
+    .header {
+        padding: 10px 16px;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    
+    .header-left {
+        width: 100%;
+    }
+    
+    .logo {
+        font-size: 16px;
+    }
+    
+    .nav-tabs {
+        width: 100%;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .nav-tab {
+        padding: 6px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    
+    .header-right {
+        width: 100%;
+        gap: 12px;
+    }
+    
+    .main {
+        max-width: 100%;
+        padding: 12px 16px;
+    }
+    
+    .search-bar {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .search-bar input,
+    .path-input {
+        padding: 10px 14px;
+        font-size: 16px;
+    }
+    
+    .btn-primary,
+    .btn-ghost {
+        padding: 10px 16px;
+        font-size: 14px;
+        width: 100%;
+    }
+    
+    .detail-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 16px;
+    }
+    
+    .detail-cover {
+        width: 140px;
+        height: 140px;
+    }
+    
+    .detail-info {
+        align-items: center;
+    }
+    
+    .detail-info h2 {
+        font-size: 22px;
+    }
+    
+    .cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 12px;
+    }
+    
+    .track-row {
+        grid-template-columns: 40px 1fr auto;
+        gap: 10px;
+        padding: 6px 10px;
+    }
+    
+    .track-cover {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .track-duration {
+        display: none;
+    }
+    
+    .track-title {
+        font-size: 13px;
+    }
+    
+    .track-artist {
+        font-size: 11px;
+    }
+    
+    .track-actions {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .btn-dl {
+        padding: 6px 10px;
+        font-size: 11px;
+        width: fit-content;
+        white-space: nowrap;
+    }
+    
+    .files-list,
+    .tracks-grid {
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+    
+    .file-row {
+        gap: 8px;
+        padding: 6px 10px;
+    }
+    
+    .file-name {
+        font-size: 12px;
+    }
+    
+    .file-size {
+        font-size: 11px;
+        display: none;
+    }
+    
+    .modal-content {
+        width: 95%;
+        max-height: 90vh;
+        border-radius: 8px;
+    }
+    
+    .modal-body {
+        padding: 16px;
+    }
+    
+    .settings-group {
+        margin-bottom: 12px;
+    }
+    
+    .settings-input,
+    .path-input {
+        font-size: 16px;
+    }
+    
+    .queue-list {
+        max-height: 40vh;
+        overflow-y: auto;
+    }
+    
+    .queue-item {
+        grid-template-columns: 36px 1fr auto;
+        gap: 10px;
+        padding: 6px;
+    }
+    
+    .queue-cover {
+        width: 36px;
+        height: 36px;
+    }
+    
+    .queue-title {
+        font-size: 12px;
+    }
+    
+    .toolbar {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .resample-options {
+        flex-direction: column;
+    }
+    
+    .resample-options > div {
+        width: 100% !important;
+    }
+    
+    .resample-options select,
+    .settings-input {
+        width: 100%;
+    }
+    
+    .expand-row {
+        grid-template-columns: 24px 1fr auto;
+        gap: 6px;
+        font-size: 11px;
+    }
+    
+    .expand-index {
+        display: none;
+    }
+    
+    .expand-time {
+        display: none;
+    }
+    
+    .expand-action {
+        width: auto;
+    }
+    
+    .platform-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+    }
+    
+    .platform-item {
+        padding: 8px 10px;
+        font-size: 12px;
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .rename-table {
+        font-size: 12px;
+    }
+    
+    .rename-table th,
+    .rename-table td {
+        padding: 6px;
+    }
+    
+    .meta-grid {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    
+    .schedule-row {
+        gap: 8px;
+        padding: 8px 10px;
+        flex-direction: column;
+    }
+    
+    .toast {
+        max-width: 90vw;
+        padding: 10px 14px;
+        font-size: 12px;
+    }
+    
+    .tab-bar {
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .tab {
+        padding: 6px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+}
+
+/* ── Tablet (Medium Screen) ──────────────────────────────────── */
+@media (min-width: 641px) and (max-width: 1024px) {
+    .main {
+        max-width: 100%;
+        padding: 16px;
+    }
+    
+    .track-row {
+        grid-template-columns: 44px 1fr auto auto;
+        gap: 10px;
+    }
+    
+    .track-cover {
+        width: 44px;
+        height: 44px;
+    }
+    
+    .detail-cover {
+        width: 160px;
+        height: 160px;
+    }
+    
+    .cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+    
+    .files-list,
+    .tracks-grid {
+        max-height: 60vh;
+    }
+    
+    .modal-content {
+        width: 90%;
+        max-width: 500px;
+    }
+    
+    .resample-options {
+        flex-wrap: wrap;
+    }
+}
+
+/* ── Large Screen ────────────────────────────────────────────── */
+@media (min-width: 1025px) {
+    .header {
+        padding: 12px 32px;
+    }
+    
+    .main {
+        max-width: 1200px;
+        padding: 32px;
+    }
 }

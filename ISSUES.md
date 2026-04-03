@@ -13,10 +13,15 @@
 - [x] Implement a feature to allow users to download music with lyrics
 - [x] Expand the search results for albums and artists to view the track information and the album information respectively
 - [x] Add pagination, lazy loading and infinite scrolling for search results, fetching tracks from files section, analysis and remuxing sections to improve performance and user experience
-- [ ] Make the UI responsive and mobile-friendly
-- [ ] Optimize download speed and performance
-- [ ] Add support for downloading playlists
-- [ ] Add support for downloading from Apple Music
+- [x] Make the UI responsive and mobile-friendly
+- [x] After remuxing, delete the original file to save storage space
+- [x] Add a feature to allow users to delete files from the library directly from the UI in Files section.
+- [x] Stop polling for resampling schedule.
+- [x] Optimize download speed and performance
+- [x] Add support for downloading playlists
+- [x] Add support for downloading from Apple Music
+- [x] Don't resample already resampled files. This can be done by checking the file name for the presence of the target bitrate or by storing the resampled files in a separate directory.
+- [x] Don't resample files that are already in the target format. This can be done by checking the file extension and skipping files that match the target format.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads

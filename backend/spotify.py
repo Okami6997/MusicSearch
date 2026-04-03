@@ -152,3 +152,74 @@ class SpotifyDownloader:
         return self._stream_download(
             flac_url, output_path, token, progress_cb
         )
+
+    def expand_playlist(self, spotify_url_or_id: str) -> list[dict]:
+        """Expand a Spotify playlist URL into individual track records.
+        
+        Spotify's public playlist API doesn't require authentication for
+        some endpoints. We use the embed API and web scraping to extract
+        track data. For full playlist content, authentication would be needed.
+        """
+        import re
+        # Extract playlist ID from URL
+        if "/playlist/" in str(spotify_url_or_id):
+            m = re.search(r"/playlist/([a-zA-Z0-9]+)", str(spotify_url_or_id))
+            playlist_id = m.group(1) if m else str(spotify_url_or_id)
+        else:
+            playlist_id = str(spotify_url_or_id)
+        
+        try:
+            # Try the embed endpoint which returns track data without auth
+            resp = self.session.get(
+                f"https://open.spotify.com/embed/playlist/{playlist_id}",
+                headers={"User-Agent": self.UA},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return []
+            
+            import json
+            data = resp.json()
+            
+            # Extract tracks from the embed response
+            tracks = []
+            track_data = data.get("tracks", {}).get("tracks", data.get("tracks", []))
+            
+            for item in track_data:
+                if isinstance(item, dict):
+                    track = item.get("track") or item
+                    if not track.get("id"):
+                        continue
+                    
+                    # Get album art
+                    album = track.get("album", {})
+                    images = album.get("images", [])
+                    cover_url = images[0].get("url", "") if images else ""
+                    
+                    # Get duration in ms
+                    duration_ms = track.get("duration_ms", 0)
+                    
+                    # Get artists
+                    artists = track.get("artists", [])
+                    artist_name = ", ".join(a.get("name", "") for a in artists)
+                    
+                    tracks.append({
+                        "id": track.get("id"),
+                        "title": track.get("name", ""),
+                        "artist": artist_name,
+                        "album": album.get("name", ""),
+                        "cover_url": cover_url,
+                        "duration_ms": duration_ms,
+                        "track_number": track.get("track_number", 0),
+                        "disc_number": track.get("disc_number", 1),
+                        "total_tracks": track.get("total_track_count", album.get("total_tracks", 0)),
+                        "year": (track.get("album", {}).get("release_date", "")[:4]) if track.get("album", {}).get("release_date") else "",
+                        "isrc": "",
+                        "url": f"https://open.spotify.com/track/{track.get('id')}",
+                        "source": "spotify",
+                        "service": "Spotify",
+                    })
+            
+            return tracks
+        except Exception:
+            return []

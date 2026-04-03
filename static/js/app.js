@@ -37,6 +37,7 @@
             tab.classList.add("active");
             $(`#page-${tab.dataset.page}`).classList.add("active");
             if (tab.dataset.page === "history") loadHistory();
+            if (tab.dataset.page === "resample") refreshResampleSchedules();
         });
     });
 
@@ -182,7 +183,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
                     </div>
                 </div>
             `).join("");
@@ -232,7 +233,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
                     </div>
                 </div>
             `).join('');
@@ -276,6 +277,7 @@
             { key: "qobuz", name: "Qobuz", available: data.qobuz },
             { key: "deezer", name: "Deezer", url: data.deezer_url },
             { key: "youtube", name: "YouTube Music", url: data.youtube_url },
+            { key: "apple", name: "Apple Music", url: data.apple_url },
         ];
 
         $("#platform-list").innerHTML = platforms.map((p) => {
@@ -288,14 +290,22 @@
         }).join("");
 
         const isrc = data.isrc || "";
+        const parsed = data.parsed || {};
+        const isPlaylist = parsed.type === "playlist" || /playlist/.test(url);
         let actionsHtml = '';
         if (isrc) {
             actionsHtml += `<div class="info-row"><strong>ISRC:</strong> ${esc(isrc)}</div>`;
         }
-        // Download button — use the best available URL or isrc
-        const dlUrl = data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
-        if (dlUrl || isrc) {
-            actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownload('${esc(dlUrl)}','${esc(isrc)}','','','','',0)">Download Track</button>`;
+        // Playlist download button
+        if (isPlaylist) {
+            const src = parsed.platform === "spotify" ? "spotify" : "apple_music";
+            actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownloadPlaylist('${esc(url)}','${src}')">Download Playlist</button>`;
+        } else {
+            // Single track download button
+            const dlUrl = data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
+            if (dlUrl || isrc) {
+                actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownload('${esc(dlUrl)}','${esc(isrc)}','','','','',0)">Download Track</button>`;
+            }
         }
         $("#resolve-actions").innerHTML = actionsHtml;
     }
@@ -337,6 +347,29 @@
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             toast(`Queued ${data.count || 0} album tracks`, "success");
+            updateQueueBadge();
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    };
+
+    window.sfDownloadPlaylist = async function (playlistUrl, source) {
+        if (!playlistUrl) {
+            toast("Missing playlist URL", "error");
+            return;
+        }
+        try {
+            const resp = await fetch("/api/download/playlist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: playlistUrl,
+                    source: source || "apple_music",
+                }),
+            });
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            toast(`Queued ${data.count || 0} playlist tracks`, "success");
             updateQueueBadge();
         } catch (e) {
             toast(e.message, "error");
@@ -410,6 +443,7 @@
     $("#btn-load-files").addEventListener("click", loadFiles);
     $("#btn-preview-rename").addEventListener("click", previewRename);
     $("#btn-rename").addEventListener("click", doRename);
+    $("#btn-delete-files").addEventListener("click", deleteSelectedFiles);
 
     async function loadFiles() {
         const path = $("#files-path").value.trim();
@@ -469,10 +503,20 @@
                 <span class="file-size">${fmtSize(f.size)}</span>
             </div>
         `).join(''));
+        
+        // Add event listeners to newly added checkboxes
+        const newCheckboxes = list.querySelectorAll('.file-check:not([data-listeners="1"])');
+        newCheckboxes.forEach((cb) => {
+            cb.addEventListener("change", updateFileButtonStates);
+            cb.setAttribute("data-listeners", "1");
+        });
+        
         if (filesState.hasMore) {
             list.insertAdjacentHTML('beforeend', '<div id="files-sentinel" class="load-sentinel"></div>');
             _watchSentinel('files-sentinel', loadMoreFiles);
         }
+        
+        updateFileButtonStates();
     }
 
     function renderFilesList(files) {
@@ -498,7 +542,21 @@
         // Select-all toggle
         $("#select-all-files").addEventListener("change", (e) => {
             $$(".file-check").forEach((cb) => cb.checked = e.target.checked);
+            updateFileButtonStates();
         });
+        
+        // Enable rename/delete buttons when files are checked
+        $$(".file-check").forEach((cb) => {
+            cb.addEventListener("change", updateFileButtonStates);
+        });
+        
+        updateFileButtonStates();
+    }
+    
+    function updateFileButtonStates() {
+        const selected = getSelectedFiles();
+        $("#btn-rename").disabled = selected.length === 0;
+        $("#btn-delete-files").disabled = selected.length === 0;
     }
 
     function getSelectedFiles() {
@@ -572,6 +630,31 @@
             if (data.error) throw new Error(data.error);
             const success = data.filter((r) => r.success).length;
             toast(`Renamed ${success}/${data.length} files`, "success");
+            loadFiles(); // refresh
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    }
+
+    async function deleteSelectedFiles() {
+        const selected = getSelectedFiles();
+        if (!selected.length) { toast("Select files first", "error"); return; }
+        
+        // Confirmation dialog
+        const count = selected.length;
+        const msg = `Delete ${count} file${count > 1 ? 's' : ''}? This cannot be undone.`;
+        if (!confirm(msg)) return;
+
+        try {
+            const resp = await fetch("/api/files/delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ files: selected }),
+            });
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const success = data.filter((r) => r.success).length;
+            toast(`Deleted ${success}/${data.length} files`, "success");
             loadFiles(); // refresh
         } catch (e) {
             toast(e.message, "error");
@@ -810,21 +893,28 @@
         if (!resampleFiles.length) return;
         const rate = $("#resample-rate").value;
         const bits = $("#resample-bits").value;
+        const deleteOriginal = $("#resample-delete-original").checked;
         if (!rate && !bits) { toast("Select sample rate or bit depth", "error"); return; }
         toast("Resampling started...", "");
         try {
             const resp = await fetch("/api/resample", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ files: resampleFiles, sample_rate: rate, bit_depth: bits }),
+                body: JSON.stringify({ files: resampleFiles, sample_rate: rate, bit_depth: bits, delete_original: deleteOriginal }),
             });
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             const success = data.filter((r) => r.success).length;
+            const skipped = data.filter((r) => r.skipped).length;
+            const deleted = data.filter((r) => r.original_deleted).length;
             const el = $("#resample-result");
             el.classList.remove("hidden");
-            el.innerHTML = `<p class="text-muted">Resampled ${success}/${data.length} files successfully.</p>`;
-            toast(`Resampled ${success}/${data.length} files`, "success");
+            let msg = `<p class="text-muted">Resampled ${success}/${data.length} files successfully.`;
+            if (skipped > 0) msg += ` Skipped ${skipped} file${skipped > 1 ? 's' : ''} (already resampled/target format).`;
+            if (deleteOriginal && deleted > 0) msg += ` Deleted ${deleted} original files.`;
+            msg += '</p>';
+            el.innerHTML = msg;
+            toast(`Resampled ${success}/${data.length} files${skipped > 0 ? `, skipped ${skipped}` : ''}${deleteOriginal && deleted > 0 ? ` and deleted ${deleted} originals` : ''}`, "success");
         } catch (e) {
             toast(e.message, "error");
         }
@@ -1087,7 +1177,11 @@
     }
     fillDownloadDir();
     refreshResampleSchedules();
-    setInterval(refreshResampleSchedules, 30000);
+
+    // Refresh schedules when returning to the app while the Resample page is open.
+    window.addEventListener("focus", () => {
+        if ($("#page-resample").classList.contains("active")) refreshResampleSchedules();
+    });
 
     // ── Helpers ──────────────────────────────────────────────
     function showLoading() { hideAll(); loading.classList.remove("hidden"); }

@@ -21,7 +21,8 @@ MUSIC_URL_PATTERNS = [
     re.compile(r"tidal\.com.*?/(track|album|playlist)/(\d+)"),
     re.compile(r"music\.amazon\..+?/(tracks|albums)/(B[0-9A-Z]{9})"),
     re.compile(r"deezer\.com.*?/(track|album|playlist)/(\d+)"),
-    re.compile(r"music\.apple\.com/.+?/(album|playlist)/"),
+    re.compile(r"music\.apple\.com/.+?/(album|playlist|song)/"),
+    re.compile(r"itunes\.apple\.com/.+?/id\d+"),
     re.compile(r"music\.youtube\.com/watch"),
     re.compile(r"soundcloud\.com/"),
     re.compile(r"qobuz\.com/.+?/(album|track)/"),
@@ -62,6 +63,14 @@ def parse_music_url(url: str) -> dict:
         m = re.search(r"(?:open\.spotify\.com|spotify)[:/](track|album|playlist)[:/]([a-zA-Z0-9]+)", url)
         if m:
             return {"platform": "spotify", "type": m.group(1), "id": m.group(2)}
+    if "music.apple.com" in url or "itunes.apple.com" in url:
+        m = re.search(r"/(album|playlist|song)/[^/]+/(\d+|[a-zA-Z0-9]+)", url)
+        if m:
+            return {"platform": "apple_music", "type": m.group(1), "id": m.group(2)}
+        m = re.search(r"/id(\d+)", url)
+        if m:
+            return {"platform": "apple_music", "type": "song", "id": m.group(1)}
+        return {"platform": "apple_music", "type": "unknown", "id": ""}
     # Generic — let song.link try to resolve it
     return {"platform": "unknown", "type": "unknown", "id": ""}
 

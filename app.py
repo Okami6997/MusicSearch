@@ -358,6 +358,7 @@ def search():
                     "album": t.get("collectionName", ""),
                     "cover_url": artwork,
                     "duration_ms": t.get("trackTimeMillis", 0) or 0,
+                    "url": t.get("trackViewUrl", ""),
                     "isrc": "",
                     "hires": False,
                     "bit_depth": 0,
@@ -768,6 +769,77 @@ def download_album():
     return jsonify({"error": f"Album download not supported for source: {source}"}), 400
 
 
+@app.route("/api/download/playlist", methods=["POST"])
+def download_playlist():
+    """Download all tracks from a playlist URL."""
+    body = request.get_json(silent=True) or {}
+    playlist_url = str(body.get("url", "")).strip()
+    source = str(body.get("source", "apple_music")).strip().lower()
+
+    if not playlist_url:
+        return jsonify({"error": "url required"}), 400
+
+    task_ids = []
+
+    if source in ("apple_music", "apple"):
+        try:
+            from backend.applemusic import AppleMusicDownloader
+            apple = AppleMusicDownloader()
+            tracks = apple.expand_playlist(playlist_url)
+            if not tracks:
+                return jsonify({"error": "Could not retrieve playlist tracks. Note: Apple Music playlists require authentication."}), 404
+
+            for t in tracks:
+                task_id = download_manager.add_track(
+                    url=t.get("url", ""),
+                    isrc=t.get("isrc", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("artist", ""),
+                    album=t.get("album", ""),
+                    cover_url=t.get("cover_url", ""),
+                    duration_ms=int(t.get("duration_ms", 0)),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=int(t.get("total_tracks", 0) or 0),
+                    disc_number=int(t.get("disc_number", 0) or 1),
+                    total_discs=1,
+                    year=str(t.get("year", ""))[:4],
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"Apple Music playlist fetch failed: {str(e)}"}), 500
+
+    if source == "spotify":
+        try:
+            from backend.spotify import SpotifyDownloader
+            spotify = SpotifyDownloader()
+            tracks = spotify.expand_playlist(playlist_url)
+            if not tracks:
+                return jsonify({"error": "Could not retrieve playlist tracks. Spotify playlists may require authentication."}), 404
+
+            for t in tracks:
+                task_id = download_manager.add_track(
+                    url=t.get("url", ""),
+                    isrc=t.get("isrc", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("artist", ""),
+                    album=t.get("album", ""),
+                    cover_url=t.get("cover_url", ""),
+                    duration_ms=int(t.get("duration_ms", 0)),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=int(t.get("total_tracks", 0) or 0),
+                    disc_number=1,
+                    total_discs=1,
+                    year=str(t.get("year", ""))[:4],
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"Spotify playlist fetch failed: {str(e)}"}), 500
+
+    return jsonify({"error": f"Playlist download not supported for source: {source}"}), 400
+
+
 @app.route("/api/queue", methods=["GET"])
 def queue():
     return jsonify(download_manager.get_queue())
@@ -824,18 +896,21 @@ def resample_files():
     files = body.get("files", [])
     sample_rate = body.get("sample_rate", "")
     bit_depth = body.get("bit_depth", "")
+    delete_original = body.get("delete_original", False)
     if not files:
         return jsonify({"error": "files required"}), 400
     if not sample_rate and not bit_depth:
         return jsonify({"error": "sample_rate or bit_depth required"}), 400
     try:
-        results = resample.resample_audio(files, sample_rate, bit_depth)
+        results = resample.resample_audio(files, sample_rate, bit_depth, delete_original)
         # Track in history
         details = []
         if sample_rate:
             details.append(f"Sample rate: {sample_rate} Hz")
         if bit_depth:
             details.append(f"Bit depth: {bit_depth}-bit")
+        if delete_original:
+            details.append("Delete originals: Yes")
         history.add_operation("resample", files, ", ".join(details))
         return jsonify(results)
     except Exception as e:
@@ -990,6 +1065,22 @@ def files_rename():
     return jsonify(data)
 
 
+@app.route("/api/files/delete", methods=["POST"])
+def files_delete():
+    """Delete audio files from disk."""
+    body = request.get_json(silent=True) or {}
+    files = body.get("files", [])
+    if not files:
+        return jsonify({"error": "files required"}), 400
+    try:
+        results = filemanager.delete_files(files)
+        success_count = sum(1 for r in results if r.get("success"))
+        history.add_operation("delete", files, f"Deleted: {success_count}/{len(files)}")
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── History routes ───────────────────────────────────────────
 
 @app.route("/api/history/downloads", methods=["GET"])
@@ -1066,4 +1157,4 @@ def on_connect():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=3000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=4000, debug=True)

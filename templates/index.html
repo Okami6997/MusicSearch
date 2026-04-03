@@ -56,7 +56,7 @@
                         <input type="text" id="url-input" placeholder="Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music...)" autocomplete="off">
                         <button id="btn-resolve" class="btn-primary">Resolve</button>
                     </div>
-                    <p class="hint">Supported: Tidal, Amazon Music, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud</p>
+                    <p class="hint">Supported: Tidal, Amazon Music, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud, Spotify &amp; Apple Music playlists</p>
                 </div>
             </div>
 
@@ -101,6 +101,7 @@
                 <input type="text" id="rename-format" class="path-input" value="{track} {title} - {artist}" placeholder="Rename format...">
                 <button id="btn-preview-rename" class="btn-ghost">Preview Rename</button>
                 <button id="btn-rename" class="btn-primary" disabled>Rename</button>
+                <button id="btn-delete-files" class="btn-ghost" style="background:var(--danger);color:#000;border-color:var(--danger)" disabled>Delete Selected</button>
             </div>
             <div id="rename-preview" class="rename-preview hidden"></div>
         </div>
@@ -145,6 +146,12 @@
                         <option value="16">16-bit</option>
                         <option value="24">24-bit</option>
                     </select>
+                </div>
+                <div class="settings-group" style="display:inline-block;margin-right:16px">
+                    <label class="checkbox-label" title="Delete original files after successful resample">
+                        <input type="checkbox" id="resample-delete-original">
+                        Delete originals
+                    </label>
                 </div>
                 <button id="btn-resample" class="btn-primary" disabled>Resample</button>
             </div>

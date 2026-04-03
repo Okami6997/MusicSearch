@@ -1,8 +1,24 @@
 # Changelog
 
-## v1.1.0 (Unreleased)
+## v1.2.0 (Unreleased)
 
-This release focuses on the top-priority workflow improvements: search results now clearly show source services, albums can be queued for full download in one click, remux operations can be scheduled to run at a future date/time from the UI, and pagination/infinite-scroll behavior is now more reliable for large result sets.
+This release adds Apple Music direct download support, playlist downloading (Apple Music & Spotify), and significant download performance improvements through caching and increased parallelism.
+
+### New Features
+
+- **Download: Apple Music direct download** — Added `AppleMusicDownloader` client that uses the iTunes Search API to look up album and track metadata, resolve Apple Music URLs, and expand album URLs into individual track records. Apple Music is now included in the download source priority order alongside Tidal, Spotify, Qobuz, Amazon, and YouTube.
+- **Download: Playlist download** — Added `POST /api/download/playlist` endpoint to expand a playlist URL (Apple Music or Spotify) into individual tracks and queue them for download. The URL Resolve view now shows a "Download Playlist" button when a playlist URL is detected, and Apple Music platform is shown in the platform availability grid.
+- **Download: Performance optimizations** — Added in-memory caching for SongLink URL resolutions and ISRC lookups (5-minute TTL) to avoid repeated API calls for the same content. Increased the download worker pool from 3 to 5 concurrent workers for faster batch downloads.
+- **Resample: Smart skip logic for already-processed files** — Resample now skips files that are already inside the target resample folder, files whose target output already exists, and FLAC files that already match the requested sample rate/bit depth.
+
+### UI Improvements
+
+- **URL Resolve: Apple Music platform** — Platform availability grid now shows Apple Music (7th platform) with availability status.
+- **URL Resolve: Playlist detection** — When a playlist URL is detected, the action button changes from "Download Track" to "Download Playlist" automatically.
+- **Responsive UI: Mobile & tablet overhaul** — Completely redesigned the mobile layout with stacked navigation, full-width touch-friendly buttons (16px font on inputs to prevent iOS zoom), horizontally scrollable tab bars, compressed track rows (3-column on mobile), hidden metadata columns to save space, optimized modal dialogs (90vw width), and responsive styles for tablet (641–1024px) and desktop (>1024px) breakpoints.
+- **Files: Delete selected files** — Added a red "Delete Selected" button in the Files section toolbar that removes chosen audio files from disk after confirmation.
+- **Resample: Delete originals option** — Added a "Delete originals" checkbox in the Resample tab. When enabled, original (unresampled) files are automatically deleted after a successful resample, saving storage space.
+- **Resample: Skipped-file reporting** — The Resample result summary and toast now include skipped counts so users can clearly see when files were intentionally not reprocessed.
 
 ### Bug Fixes
 
@@ -15,39 +31,28 @@ This release focuses on the top-priority workflow improvements: search results n
 - **Download: Missing metadata in download requests** — The frontend Download button was not passing `track_number`, `total_tracks`, or `disc_number` to the backend. These fields are now included in all download requests from search results.
 - **Download: Fallback when ISRC-only resolution fails** — When only an ISRC is available and Deezer/SongLink resolution fails, the downloader now falls back to Qobuz ISRC search to populate title/artist, enabling YouTube text-search as a last-resort download source.
 - **Download: Preferred source priority** — Simplified and fixed the `_ordered_sources` logic so the user's preferred download service is always tried first (when it has data), followed by other services with data, then remaining services. The preferred source is always included in the list even if it initially lacks data.
-- **Download: Queue worker was processing one task at a time** — The download worker now processes multiple queued tasks concurrently via `ThreadPoolExecutor` (default 3 workers), enabling true parallel downloads instead of sequential processing.
+- **Download: Queue worker was processing one task at a time** — The download worker now processes multiple queued tasks concurrently via `ThreadPoolExecutor` (default 5 workers), enabling true parallel downloads instead of sequential processing.
 - **Search: Infinite scroll sometimes stuck at 20 tracks** — Fixed Tracks section pagination rendering so the first-page sentinel is reliably inserted, cleaned duplicated row markup that could interfere with rendering, and added a scroll-based fallback trigger when IntersectionObserver does not fire in some layouts.
-
-### New Features
-
-- **Search: Artist and album results** — The search API now returns artists and albums alongside tracks. Qobuz search queries the `/artist/search` and `/album/search` endpoints (up to 5 results each). The iTunes fallback also searches for artists (`musicArtist` entity) and albums (`album` entity).
-- **Search: YouTube Music results** — Search results now include a dedicated YouTube Music section. A new `search_tracks()` method on `YouTubeDownloader` scrapes YouTube Music's search page and parses `ytInitialData` JSON to extract video IDs, titles, artists, albums, and thumbnails. Results are labeled "YouTube Music · MP3 320kbps" and download directly via YouTube URL.
-- **URL Resolve: YouTube Music and Spotify in platform availability** — The URL resolve view now displays 6 platforms (Tidal, Spotify, Amazon Music, Qobuz, Deezer, YouTube Music) instead of the previous 4. The download button also prefers URLs in order: Tidal → Spotify → Amazon → YouTube.
-- **Search: Service labels in results** — Search results now display the source service (for example Qobuz, Apple Music, YouTube Music) as badges on tracks and albums so users can immediately see where each result comes from.
-- **Download: Album download endpoint and UI action** — Added `POST /api/download/album` to expand album results into per-track queue items and queue them in one action. The Albums section now includes a "Download Album" button.
-- **Resample: Scheduled remux jobs** — Added scheduled remux support with create/list/delete APIs and a background scheduler worker. Users can now choose a future date/time to run batch remux jobs from the Resample tab.
-- **Search: Parallel API queries** — Search now runs Qobuz tracks/artists/albums and YouTube queries concurrently using ThreadPoolExecutor (4 workers), reducing total search latency by ~75%.
-- **Download: Lidarr-compatible folder structure** — Downloaded files are now organized as `Artist/Album (Year)/NN - Title.ext` instead of flat or album-only layouts, matching Lidarr's standard library format for seamless library integration.
-- **Pagination + lazy loading + infinite scroll** — Added offset-based pagination for search tracks and file listings, plus infinite scrolling in Search, Files, Analysis, and Resample sections to improve large-library performance and UX.
-
-### UI Improvements
-
-- **Search results sections** — Search results are now organized into labeled sections: Artists, Albums, Tracks, and YouTube Music, each with a styled heading and separator.
-- **Artist display** — Artists are shown with a circular avatar image and album count.
-- **Album display** — Albums show cover art, artist name, track count, release year, and a Hi-Res badge when applicable.
-- **Search: Service badges** — Added compact service badges on search results and metadata rows.
-- **Resample: Scheduler panel** — Added schedule name and datetime inputs plus a live schedule list with status and delete actions.
+- **Resample: Polling for schedule every 30 seconds removed** — The background `setInterval` that polled `/api/resample/schedule` every 30 seconds has been removed. Schedules are now refreshed on-demand: when the Resample tab is opened, when a schedule is created or deleted, and when the browser window regains focus while on the Resample page.
 
 ### Files Changed
 
-- `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album/YouTube search for Qobuz and iTunes; search queries now run concurrently with ThreadPoolExecutor (4 workers); added service metadata fields and year parameter; new `/api/download/album` endpoint; scheduled remux APIs with background scheduler worker; added `offset` support to `/api/search`; added paginated response shape for `/api/files/audio`
-- `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering; added year field to DownloadTask; generates Lidarr-compatible paths `Artist/Album (Year)/NN - Title.flac`; queue worker now runs downloads concurrently using `ThreadPoolExecutor` (3 workers)
-- `backend/youtube.py` — Added `search_tracks()` method for YouTube Music search page scraping
-- `backend/resample.py` — Uses subprocess FFmpeg calls only (removed ffmpeg-python PyPI wrapper dependency)
-- `requirements.txt` — Removed `ffmpeg-python` dependency
-- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number; added service badge rendering, concurrent album download action, and scheduled remux create/list/delete logic; added infinite-scroll pagination state and lazy-loading fetch flows for Search, Files, Analysis, and Resample sections
-- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number; added service badge rendering, concurrent album download action, and scheduled remux create/list/delete logic; added infinite-scroll pagination state and lazy-loading fetch flows for Search, Files, Analysis, and Resample sections; fixed track-list sentinel rendering and added scroll fallback for search pagination
-- `templates/index.html` — Added scheduled remux controls on the Resample page (job name, schedule datetime, action button, schedule list)
+- `app.py` — Added `/api/download/playlist` endpoint for Apple Music and Spotify playlists; added `applemusic` client to `DownloadManager`; increased `_max_workers` to 5
+- `backend/applemusic.py` — New file: Apple Music / iTunes downloader with `expand_album()`, `expand_playlist()`, `get_track_stream_url()`, and `parse_apple_music_url()` methods
+- `backend/spotify.py` — Added `expand_playlist()` method using Spotify embed API to extract playlist track metadata
+- `backend/downloader.py` — Added `AppleMusicDownloader` integration; added SongLink and ISRC in-memory caches with 5-min TTL; increased worker pool from 3 to 5 concurrent workers; added `apple_url` to links dict and source priority order
+- `backend/songlink.py` — Updated `MUSIC_URL_PATTERNS` to include `/song/` in Apple Music regex and `"song"` type in `parse_music_url()`; `get_all_urls()` now returns `apple_url` from SongLink response
+- `backend/__init__.py` — Re-exported `AppleMusicDownloader`
+- `static/js/app.js` — Added `sfDownloadPlaylist()` function; updated `renderResolveResults()` to show Apple Music platform and detect playlist URLs with appropriate download button; increased download worker pool reference to 5 workers
+- `static/js/app.js` — Added `deleteSelectedFiles()` function and `updateFileButtonStates()` for Files section delete feature; added `resample-delete-original` checkbox handling in `doResample()`; removed `setInterval(refreshResampleSchedules, 30000)` polling and replaced with on-demand refresh on tab switch and window focus
+- `templates/index.html` — Added "Delete Selected" button in Files toolbar; added "Delete originals" checkbox in Resample options; updated hint text to mention Spotify & Apple Music playlists
+- `static/css/style.css` — Comprehensive responsive media queries: mobile (<640px) with stacked layout, 16px input fonts to prevent zoom, scrollable navbars, compressed 3-column track rows; tablet (641–1024px) intermediate layout; desktop (>1024px) full layout; `.btn-delete` danger styling; resample checkbox label styling
+- `backend/resample.py` — Added guardrails to skip already-resampled files (target folder or existing output) and FLAC files already in target format (sample rate/bit depth), with structured `skipped` / `skip_reason` response fields
+- `static/js/app.js` — Updated resample result messaging to display skipped-file counts in both in-page summary and toast
+
+---
+
+## v1.1.0
 - `static/css/style.css` — Added `.results-section` and `.results-heading` styles, service badges, album action alignment, scheduled remux list rows, and `.load-sentinel` infinite-scroll indicator styling
 
 ---
