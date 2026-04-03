@@ -2,7 +2,7 @@
 
 ## v1.1.0 (Unreleased)
 
-This release focuses on the top-priority workflow improvements: search results now clearly show source services, albums can be queued for full download in one click, and remux operations can be scheduled to run at a future date/time from the UI.
+This release focuses on the top-priority workflow improvements: search results now clearly show source services, albums can be queued for full download in one click, remux operations can be scheduled to run at a future date/time from the UI, and pagination/infinite-scroll behavior is now more reliable for large result sets.
 
 ### Bug Fixes
 
@@ -16,6 +16,7 @@ This release focuses on the top-priority workflow improvements: search results n
 - **Download: Fallback when ISRC-only resolution fails** — When only an ISRC is available and Deezer/SongLink resolution fails, the downloader now falls back to Qobuz ISRC search to populate title/artist, enabling YouTube text-search as a last-resort download source.
 - **Download: Preferred source priority** — Simplified and fixed the `_ordered_sources` logic so the user's preferred download service is always tried first (when it has data), followed by other services with data, then remaining services. The preferred source is always included in the list even if it initially lacks data.
 - **Download: Queue worker was processing one task at a time** — The download worker now processes multiple queued tasks concurrently via `ThreadPoolExecutor` (default 3 workers), enabling true parallel downloads instead of sequential processing.
+- **Search: Infinite scroll sometimes stuck at 20 tracks** — Fixed Tracks section pagination rendering so the first-page sentinel is reliably inserted, cleaned duplicated row markup that could interfere with rendering, and added a scroll-based fallback trigger when IntersectionObserver does not fire in some layouts.
 
 ### New Features
 
@@ -27,6 +28,7 @@ This release focuses on the top-priority workflow improvements: search results n
 - **Resample: Scheduled remux jobs** — Added scheduled remux support with create/list/delete APIs and a background scheduler worker. Users can now choose a future date/time to run batch remux jobs from the Resample tab.
 - **Search: Parallel API queries** — Search now runs Qobuz tracks/artists/albums and YouTube queries concurrently using ThreadPoolExecutor (4 workers), reducing total search latency by ~75%.
 - **Download: Lidarr-compatible folder structure** — Downloaded files are now organized as `Artist/Album (Year)/NN - Title.ext` instead of flat or album-only layouts, matching Lidarr's standard library format for seamless library integration.
+- **Pagination + lazy loading + infinite scroll** — Added offset-based pagination for search tracks and file listings, plus infinite scrolling in Search, Files, Analysis, and Resample sections to improve large-library performance and UX.
 
 ### UI Improvements
 
@@ -38,14 +40,15 @@ This release focuses on the top-priority workflow improvements: search results n
 
 ### Files Changed
 
-- `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album/YouTube search for Qobuz and iTunes; search queries now run concurrently with ThreadPoolExecutor (4 workers); added service metadata fields and year parameter; new `/api/download/album` endpoint; scheduled remux APIs with background scheduler worker
+- `app.py` — `DEFAULT_DIR` now reads `SONGSFETCH_OUTPUT_DIR` env var; added artist/album/YouTube search for Qobuz and iTunes; search queries now run concurrently with ThreadPoolExecutor (4 workers); added service metadata fields and year parameter; new `/api/download/album` endpoint; scheduled remux APIs with background scheduler worker; added `offset` support to `/api/search`; added paginated response shape for `/api/files/audio`
 - `backend/downloader.py` — Fixed double `.json()` call, removed dead Spotify ISRC stub, wrapped SongLink in inner try/except, moved `import requests` to module level, `__init__` fallback now honors `SONGSFETCH_OUTPUT_DIR` env var, improved ISRC-only resolution and source priority ordering; added year field to DownloadTask; generates Lidarr-compatible paths `Artist/Album (Year)/NN - Title.flac`; queue worker now runs downloads concurrently using `ThreadPoolExecutor` (3 workers)
 - `backend/youtube.py` — Added `search_tracks()` method for YouTube Music search page scraping
 - `backend/resample.py` — Uses subprocess FFmpeg calls only (removed ffmpeg-python PyPI wrapper dependency)
 - `requirements.txt` — Removed `ffmpeg-python` dependency
-- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number; added service badge rendering, concurrent album download action, and scheduled remux create/list/delete logic
+- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number; added service badge rendering, concurrent album download action, and scheduled remux create/list/delete logic; added infinite-scroll pagination state and lazy-loading fetch flows for Search, Files, Analysis, and Resample sections
+- `static/js/app.js` — Updated `renderSearchResults` for artists/albums/YouTube sections, added YouTube Music and Spotify to platform availability, `sfDownload` now passes track_number/total_tracks/disc_number; added service badge rendering, concurrent album download action, and scheduled remux create/list/delete logic; added infinite-scroll pagination state and lazy-loading fetch flows for Search, Files, Analysis, and Resample sections; fixed track-list sentinel rendering and added scroll fallback for search pagination
 - `templates/index.html` — Added scheduled remux controls on the Resample page (job name, schedule datetime, action button, schedule list)
-- `static/css/style.css` — Added `.results-section` and `.results-heading` styles, service badges, album action alignment, and scheduled remux list rows
+- `static/css/style.css` — Added `.results-section` and `.results-heading` styles, service badges, album action alignment, scheduled remux list rows, and `.load-sentinel` infinite-scroll indicator styling
 
 ---
 

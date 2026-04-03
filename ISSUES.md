@@ -4,35 +4,38 @@
 - [x] Implement Album download functionality
 - [x] Use Parallel processing for faster search results and downloads, using asyncio.
 - [x] When downloading a track/album. store it in a format that is similar to lidarr as it is a music downloader and library manager. This will allow users to easily integrate the downloaded music into their existing library management system.
+- [x] Implement a feature to allow users to download music with embedded metadata (e.g., genre, release date)
+- [x] Implement a feature to allow users to download music with embedded album information (e.g., track number, disc number)
+- [x] Implement a feature to allow users to download music with embedded genre information (e.g., name, biography)
+- [x] Implement a feature to allow users to download music with embedded release date information (e.g., name, biography)
+- [x] Implement a feature to allow users to download music with embedded publisher information (e.g., name, biography)
+- [x] Create a feature to allow users to download music with album art and metadata
+- [x] Implement a feature to allow users to download music with lyrics
+- [x] Expand the search results for albums and artists to view the track information and the album information respectively
+- [x] Add pagination, lazy loading and infinite scrolling for search results, fetching tracks from files section, analysis and remuxing sections to improve performance and user experience
+- [ ] Make the UI responsive and mobile-friendly
+- [ ] Optimize download speed and performance
 - [ ] Add support for downloading playlists
 - [ ] Add support for downloading from Apple Music
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
-- [ ] Optimize download speed and performance
 - [ ] Implement error handling for failed downloads
 - [ ] Add support for downloading from additional music streaming services
-- [ ] Create a feature to manage downloaded music (e.g., organize by artist, album
+- [ ] Create a feature to manage downloaded music (e.g., organize by artist, album)
 - [ ] Implement a feature to automatically update the music library with new releases
 - [ ] Add a feature to allow users to customize the download quality (e.g., bitrate)
-- [ ] Implement a feature to allow users to download music in different formats (e.g., MP3, FLAC)
-- [ ] Create a feature to allow users to download music with album art and metadata
-- [ ] Implement a feature to allow users to download music with lyrics
-- [ ] Add a feature to allow users to download music with embedded metadata (e.g., genre, release date)
-- [ ] Implement a feature to allow users to download music with embedded album information (e.g., track number, disc number)
-- [ ] Create a feature to allow users to download music with embedded artist information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded artist information (e.g., name, biography)
 - [ ] Implement a feature to allow users to download music with embedded composer information (e.g., name, biography)
-- [ ] Add a feature to allow users to download music with embedded publisher information (e.g., name, biography)
 - [ ] Implement a feature to allow users to download music with embedded copyright information (e.g., name, biography)
-- [ ] Create a feature to allow users to download music with embedded license information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded license information (e.g., name, biography)
 - [ ] Implement a feature to allow users to download music with embedded mood information (e.g., name, biography)
-- [ ] Add a feature to allow users to download music with embedded theme information (e.g., name, biography)
-- [ ]Implement a feature to allow users to download music with embedded tempo information (e.g., name, biography)
-- [ ] Create a feature to allow users to download music with embedded key information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded theme information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded tempo information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded key information (e.g., name, biography)
 - [ ] Implement a feature to allow users to download music with embedded time signature information (e.g., name, biography)
-- [ ] Add a feature to allow users to download music with embedded instrumentation information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded instrumentation information (e.g., name, biography)
 - [ ] Implement a feature to allow users to download music with embedded vocal information (e.g., name, biography)
-- [ ] Create a feature to allow users to download music with embedded genre information (e.g., name, biography)
-- [ ] Implement a feature to allow users to download music with embedded release date information (e.g., name, biography)
-- [ ] Add a feature to allow users to download music with embedded popularity information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music with embedded popularity information (e.g., name, biography)
+- [ ] Implement a feature to allow users to download music in different formats (e.g., MP3, FLAC)
 - [ ] Implement a feature to allow users to download music with embedded danceability information (e.g., name, biography)
 - [ ] Create a feature to allow users to download music with embedded energy information (e.g., name, biography)

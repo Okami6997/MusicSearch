@@ -228,6 +228,7 @@ def search():
         except Exception:
             pass
 
+    offset = request.args.get("offset", 0, type=int)
     # Try Qobuz search first
     try:
         from backend.qobuz import QobuzDownloader
@@ -239,7 +240,7 @@ def search():
         def _do_qobuz_tracks():
             r = qobuz.session.get(
                 "https://www.qobuz.com/api.json/0.2/track/search",
-                params={"query": q, "limit": 20, "app_id": qobuz.APP_ID},
+                params={"query": q, "limit": 20, "offset": offset, "app_id": qobuz.APP_ID},
                 timeout=15,
             )
             r.raise_for_status()
@@ -281,6 +282,8 @@ def search():
                     "name": a.get("name", ""),
                     "image_url": img.get("large", "") or img.get("medium", "") or img.get("small", ""),
                     "albums_count": a.get("albums_count", 0),
+                    "source": "qobuz",
+                    "service": "Qobuz",
                 })
             return out
 
@@ -309,16 +312,16 @@ def search():
 
         with _TPE(max_workers=4) as _ex:
             _ft  = _ex.submit(_do_qobuz_tracks)
-            _fa  = _ex.submit(_do_qobuz_artists)
-            _fal = _ex.submit(_do_qobuz_albums)
-            _fyt = _ex.submit(_youtube_search, q, 10)
+            _fa  = _ex.submit(_do_qobuz_artists) if offset == 0 else None
+            _fal = _ex.submit(_do_qobuz_albums) if offset == 0 else None
+            _fyt = _ex.submit(_youtube_search, q, 10) if offset == 0 else None
             try:     tracks    = _ft.result()
             except Exception: tracks    = []
-            try:     artists   = _fa.result()
+            try:     artists   = _fa.result() if _fa else []
             except Exception: artists   = []
-            try:     albums    = _fal.result()
+            try:     albums    = _fal.result() if _fal else []
             except Exception: albums    = []
-            try:     yt_tracks = _fyt.result()
+            try:     yt_tracks = _fyt.result() if _fyt else []
             except Exception: yt_tracks = []
 
         if tracks or artists or albums:
@@ -326,6 +329,8 @@ def search():
                 "tracks": tracks, "artists": artists, "albums": albums,
                 "youtube_tracks": yt_tracks,
                 "source": "qobuz",
+                "has_more": len(tracks) >= 20,
+                "offset": offset,
             })
     except Exception:
         pass
@@ -337,7 +342,7 @@ def search():
         def _do_itunes_tracks():
             r = http_requests.get(
                 "https://itunes.apple.com/search",
-                params={"term": q, "media": "music", "entity": "song", "limit": 20},
+                params={"term": q, "media": "music", "entity": "song", "limit": 20, "offset": offset},
                 timeout=15,
             )
             r.raise_for_status()
@@ -377,6 +382,8 @@ def search():
                     "name": a.get("artistName", ""),
                     "image_url": "",
                     "albums_count": 0,
+                    "source": "itunes",
+                    "service": "Apple Music",
                 })
             return out
 
@@ -408,25 +415,170 @@ def search():
 
         with _TPE(max_workers=4) as _ex:
             _ft  = _ex.submit(_do_itunes_tracks)
-            _fa  = _ex.submit(_do_itunes_artists)
-            _fal = _ex.submit(_do_itunes_albums)
-            _fyt = _ex.submit(_youtube_search, q, 10)
+            _fa  = _ex.submit(_do_itunes_artists) if offset == 0 else None
+            _fal = _ex.submit(_do_itunes_albums) if offset == 0 else None
+            _fyt = _ex.submit(_youtube_search, q, 10) if offset == 0 else None
             try:     tracks    = _ft.result()
             except Exception: tracks    = []
-            try:     artists   = _fa.result()
+            try:     artists   = _fa.result() if _fa else []
             except Exception: artists   = []
-            try:     albums    = _fal.result()
+            try:     albums    = _fal.result() if _fal else []
             except Exception: albums    = []
-            try:     yt_tracks = _fyt.result()
+            try:     yt_tracks = _fyt.result() if _fyt else []
             except Exception: yt_tracks = []
 
         return jsonify({
             "tracks": tracks, "artists": artists, "albums": albums,
             "youtube_tracks": yt_tracks,
             "source": "itunes",
+            "has_more": len(tracks) >= 20,
+            "offset": offset,
         })
     except Exception as e:
         return jsonify({"error": f"Search failed: {str(e)}"}), 500
+
+
+@app.route("/api/search/expand", methods=["GET"])
+def search_expand():
+    """Fetch expandable details for album tracks or artist albums."""
+    kind = request.args.get("kind", "").strip().lower()  # album | artist
+    source = request.args.get("source", "").strip().lower()  # qobuz | itunes
+    item_id = request.args.get("id", "").strip()
+
+    if kind not in ("album", "artist"):
+        return jsonify({"error": "kind must be album or artist"}), 400
+    if source not in ("qobuz", "itunes"):
+        return jsonify({"error": "source must be qobuz or itunes"}), 400
+    if not item_id:
+        return jsonify({"error": "id required"}), 400
+
+    try:
+        if source == "qobuz":
+            from backend.qobuz import QobuzDownloader
+            qobuz = QobuzDownloader()
+
+            if kind == "album":
+                resp = qobuz.session.get(
+                    "https://www.qobuz.com/api.json/0.2/album/get",
+                    params={"album_id": item_id, "app_id": qobuz.APP_ID},
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                album = resp.json()
+                album_title = album.get("title", "")
+                album_cover = album.get("image", {}).get("large", "")
+                album_year = (album.get("release_date_original") or "")[:4]
+                total_tracks = int(album.get("tracks_count", 0) or 0)
+                items = []
+                for t in album.get("tracks", {}).get("items", []):
+                    items.append({
+                        "id": t.get("id"),
+                        "title": t.get("title", ""),
+                        "artist": t.get("performer", {}).get("name", ""),
+                        "duration_ms": int((t.get("duration", 0) or 0) * 1000),
+                        "track_number": int(t.get("track_number", 0) or 0),
+                        "disc_number": int(t.get("media_number", 0) or 1),
+                        "total_tracks": total_tracks,
+                        "album": album_title,
+                        "cover_url": album_cover,
+                        "year": album_year,
+                        "isrc": t.get("isrc", ""),
+                        "url": "",
+                        "source": "qobuz",
+                    })
+                return jsonify({"kind": kind, "source": source, "items": items})
+
+            # artist
+            resp = qobuz.session.get(
+                "https://www.qobuz.com/api.json/0.2/artist/get",
+                params={"artist_id": item_id, "extra": "albums", "limit": 50, "app_id": qobuz.APP_ID},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            artist = resp.json()
+            albums = artist.get("albums", {})
+            rows = albums.get("items", []) if isinstance(albums, dict) else albums or []
+            items = []
+            for al in rows:
+                items.append({
+                    "id": al.get("id"),
+                    "title": al.get("title", ""),
+                    "artist": al.get("artist", {}).get("name", "") or artist.get("name", ""),
+                    "cover_url": al.get("image", {}).get("large", ""),
+                    "tracks_count": al.get("tracks_count", 0),
+                    "release_date": al.get("release_date_original", ""),
+                    "source": "qobuz",
+                })
+            return jsonify({"kind": kind, "source": source, "items": items})
+
+        # iTunes source
+        if kind == "album":
+            resp = http_requests.get(
+                "https://itunes.apple.com/lookup",
+                params={"id": item_id, "entity": "song"},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            rows = [r for r in resp.json().get("results", []) if r.get("wrapperType") == "track"]
+            album_name = rows[0].get("collectionName", "") if rows else ""
+            album_year = (rows[0].get("releaseDate", "")[:4]) if rows else ""
+            total_tracks = int(rows[0].get("trackCount", 0) or len(rows)) if rows else 0
+            album_cover = ""
+            if rows:
+                album_cover = rows[0].get("artworkUrl100", "")
+                if album_cover:
+                    album_cover = album_cover.replace("100x100bb", "600x600bb")
+            items = []
+            for t in rows:
+                items.append({
+                    "id": t.get("trackId"),
+                    "title": t.get("trackName", ""),
+                    "artist": t.get("artistName", ""),
+                    "duration_ms": int(t.get("trackTimeMillis", 0) or 0),
+                    "track_number": int(t.get("trackNumber", 0) or 0),
+                    "disc_number": int(t.get("discNumber", 0) or 1),
+                    "total_tracks": total_tracks,
+                    "album": album_name,
+                    "cover_url": album_cover,
+                    "year": album_year,
+                    "isrc": "",
+                    "url": t.get("trackViewUrl", ""),
+                    "source": "itunes",
+                })
+            return jsonify({"kind": kind, "source": source, "items": items})
+
+        # iTunes artist albums
+        resp = http_requests.get(
+            "https://itunes.apple.com/lookup",
+            params={"id": item_id, "entity": "album", "limit": 200},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        rows = [
+            r for r in resp.json().get("results", [])
+            if r.get("wrapperType") == "collection" and r.get("collectionType") == "Album"
+        ]
+        seen = set()
+        items = []
+        for al in rows:
+            if al.get("collectionId") in seen:
+                continue
+            seen.add(al.get("collectionId"))
+            art = al.get("artworkUrl100", "")
+            if art:
+                art = art.replace("100x100bb", "600x600bb")
+            items.append({
+                "id": al.get("collectionId"),
+                "title": al.get("collectionName", ""),
+                "artist": al.get("artistName", ""),
+                "cover_url": art,
+                "tracks_count": al.get("trackCount", 0),
+                "release_date": al.get("releaseDate", ""),
+                "source": "itunes",
+            })
+        return jsonify({"kind": kind, "source": source, "items": items})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/availability", methods=["GET"])
@@ -785,7 +937,16 @@ def files_audio():
     path = request.args.get("path", settings["output_dir"])
     try:
         data = filemanager.list_audio_files(path)
-        return jsonify(data)
+        total = len(data)
+        offset = request.args.get("offset", 0, type=int)
+        limit = request.args.get("limit", 50, type=int)
+        page = data[offset: offset + limit]
+        return jsonify({
+            "files": page,
+            "total": total,
+            "has_more": (offset + limit) < total,
+            "offset": offset,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -905,4 +1066,4 @@ def on_connect():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=4000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=3000, debug=True)

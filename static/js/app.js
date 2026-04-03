@@ -10,6 +10,13 @@
     let scheduledResampleJobs = [];
     const socket = io();
 
+    // ── Pagination / lazy-load state ────────────────────────
+    let searchPagination = { q: '', offset: 0, loading: false, hasMore: false };
+    let filesState = { path: '', offset: 0, loading: false, hasMore: false };
+    let analysisState = { path: '', offset: 0, loading: false, hasMore: false };
+    let resampleState = { path: '', offset: 0, loading: false, hasMore: false };
+    const _sectionObservers = new Map();
+
     // ── DOM refs ────────────────────────────────────────────
     const $ = (s) => document.querySelector(s);
     const $$ = (s) => document.querySelectorAll(s);
@@ -59,11 +66,15 @@
     async function doSearch() {
         const q = searchInput.value.trim();
         if (!q) return;
+        _unwatchSentinel('search-tracks-sentinel');
+        searchPagination = { q, offset: 0, loading: false, hasMore: false };
         showLoading();
         try {
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
+            searchPagination.hasMore = !!data.has_more;
+            searchPagination.offset = (data.tracks || []).length;
             renderSearchResults(
                 data.tracks || [],
                 data.artists || [],
@@ -71,9 +82,30 @@
                 data.youtube_tracks || [],
                 data.source || ""
             );
+            if (searchPagination.hasMore) _watchSentinel('search-tracks-sentinel', loadMoreSearch);
         } catch (e) {
             toast(e.message, "error");
             showEmpty();
+        }
+    }
+
+    async function loadMoreSearch() {
+        if (searchPagination.loading || !searchPagination.hasMore) return;
+        searchPagination.loading = true;
+        const sentinel = $('#search-tracks-sentinel');
+        if (sentinel) sentinel.textContent = 'Loading more\u2026';
+        try {
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(searchPagination.q)}&offset=${searchPagination.offset}`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const newTracks = data.tracks || [];
+            searchPagination.offset += newTracks.length;
+            searchPagination.hasMore = !!data.has_more;
+            appendSearchTracks(newTracks, searchPagination.hasMore, data.source || '');
+        } catch (e) {
+            toast(e.message, "error");
+        } finally {
+            searchPagination.loading = false;
         }
     }
 
@@ -93,13 +125,20 @@
         if (artists.length) {
             html += '<div class="results-section"><h3 class="results-heading">Artists</h3>';
             html += artists.map((a) => `
-                <div class="track-row artist-row">
-                    <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(a.name)}</div>
-                        <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
+                <div class="expand-item">
+                    <div class="track-row artist-row">
+                        <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
+                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
+                        <div class="track-info">
+                            <div class="track-title">${esc(a.name)}</div>
+                            <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
+                            <div class="track-meta">${serviceBadge(a.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}</div>
+                        </div>
+                        <div class="track-actions album-actions">
+                            <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'artist','${esc(String(a.id || ''))}','${esc(a.source || searchSource || 'qobuz')}')">Expand</button>
+                        </div>
                     </div>
+                    <div class="expand-panel hidden"></div>
                 </div>
             `).join("");
             html += '</div>';
@@ -109,17 +148,21 @@
         if (albums.length) {
             html += '<div class="results-section"><h3 class="results-heading">Albums</h3>';
             html += albums.map((al) => `
-                <div class="track-row album-row">
-                    <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(al.title)}</div>
-                        <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
-                        <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
+                <div class="expand-item">
+                    <div class="track-row album-row">
+                        <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
+                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                        <div class="track-info">
+                            <div class="track-title">${esc(al.title)}</div>
+                            <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
+                            <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
+                        </div>
+                        <div class="track-actions album-actions">
+                            <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'album','${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}')">Expand</button>
+                            <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
+                        </div>
                     </div>
-                    <div class="track-actions album-actions">
-                        <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
-                    </div>
+                    <div class="expand-panel hidden"></div>
                 </div>
             `).join("");
             html += '</div>';
@@ -127,7 +170,7 @@
 
         // Tracks section
         if (tracks.length) {
-            html += '<div class="results-section"><h3 class="results-heading">Tracks</h3>';
+            html += '<div class="results-section" id="tracks-results-section"><h3 class="results-heading">Tracks</h3>';
             html += tracks.map((t) => `
                 <div class="track-row">
                     <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
@@ -143,6 +186,7 @@
                     </div>
                 </div>
             `).join("");
+            if (searchPagination.hasMore) html += '<div id="search-tracks-sentinel" class="load-sentinel">Scroll to load more tracks</div>';
             html += '</div>';
         }
 
@@ -168,6 +212,35 @@
         }
 
         list.innerHTML = html;
+    }
+
+
+    function appendSearchTracks(tracks, hasMore, searchSource) {
+        const section = $('#tracks-results-section');
+        if (!section) return;
+        _unwatchSentinel('search-tracks-sentinel');
+        const oldSentinel = $('#search-tracks-sentinel');
+        if (oldSentinel) oldSentinel.remove();
+        const newHtml = tracks.map((t) => `
+                <div class="track-row">
+                    <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(t.title)}</div>
+                        <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                        <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
+                    </div>
+                    <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+                    <div class="track-actions">
+                        <button class="btn-dl" onclick="window.sfDownload('','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                    </div>
+                </div>
+            `).join('');
+        section.insertAdjacentHTML('beforeend', newHtml);
+        if (hasMore) {
+            section.insertAdjacentHTML('beforeend', '<div id="search-tracks-sentinel" class="load-sentinel"></div>');
+            _watchSentinel('search-tracks-sentinel', loadMoreSearch);
+        }
     }
 
     // ── URL Resolve ─────────────────────────────────────────
@@ -270,6 +343,69 @@
         }
     };
 
+    window.sfToggleSearchExpand = async function (btn, kind, id, source) {
+        const item = btn.closest(".expand-item");
+        const panel = item ? item.querySelector(".expand-panel") : null;
+        if (!panel || !id || !source) return;
+
+        // Toggle if already loaded
+        if (panel.dataset.loaded === "1") {
+            const open = !panel.classList.contains("hidden");
+            panel.classList.toggle("hidden", open);
+            btn.textContent = open ? "Expand" : "Collapse";
+            return;
+        }
+
+        btn.disabled = true;
+        panel.classList.remove("hidden");
+        panel.innerHTML = '<p class="text-muted">Loading details...</p>';
+
+        try {
+            const qs = new URLSearchParams({ kind, id, source });
+            const resp = await fetch(`/api/search/expand?${qs.toString()}`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+
+            panel.innerHTML = renderExpandItems(kind, data.items || [], source);
+            panel.dataset.loaded = "1";
+            btn.textContent = "Collapse";
+        } catch (e) {
+            panel.innerHTML = `<p class="text-danger">${esc(e.message)}</p>`;
+            toast(e.message, "error");
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    function renderExpandItems(kind, items, source) {
+        if (!items.length) {
+            return '<p class="text-muted">No details available.</p>';
+        }
+        if (kind === "album") {
+            return `<div class="expand-list">${items.map((t) => `
+                <div class="expand-row">
+                    <span class="expand-index">${t.track_number ? String(t.track_number).padStart(2, "0") : "--"}</span>
+                    <span class="expand-main">${esc(t.title || "Untitled")}${t.artist ? ` <span class="text-muted">- ${esc(t.artist)}</span>` : ""}</span>
+                    <span class="expand-time">${fmtDuration(t.duration_ms || 0)}</span>
+                    <span class="expand-action">
+                        <button class="btn-ghost" onclick="window.sfDownload('${esc(t.url || '')}','${esc(t.isrc || '')}','${esc(t.title || '')}','${esc(t.artist || '')}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                    </span>
+                </div>
+            `).join("")}</div>`;
+        }
+
+        return `<div class="expand-list">${items.map((al) => `
+            <div class="expand-row">
+                <span class="expand-index"></span>
+                <span class="expand-main">${esc(al.title || "Untitled")}${al.release_date ? ` <span class="text-muted">(${esc(String(al.release_date).substring(0, 4))})</span>` : ""}</span>
+                <span class="expand-time">${al.tracks_count ? `${al.tracks_count} tracks` : ""}</span>
+                <span class="expand-action">
+                    <button class="btn-ghost" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || source || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
+                </span>
+            </div>
+        `).join("")}</div>`;
+    }
+
     // ── File Manager ────────────────────────────────────────
     $("#btn-load-files").addEventListener("click", loadFiles);
     $("#btn-preview-rename").addEventListener("click", previewRename);
@@ -279,13 +415,63 @@
         const path = $("#files-path").value.trim();
         if (!path) return;
         try {
-            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(path)}`);
+            _unwatchSentinel('files-sentinel');
+            filesState = { path, offset: 0, loading: false, hasMore: false };
+            loadedAudioFiles = [];
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(path)}&offset=0&limit=50`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            loadedAudioFiles = data.map((f) => f.path);
-            renderFilesList(data);
+            const files = data.files || [];
+            loadedAudioFiles = files.map((f) => f.path);
+            filesState.offset = files.length;
+            filesState.hasMore = data.has_more;
+            renderFilesList(files);
+            if (filesState.hasMore) _watchSentinel('files-sentinel', loadMoreFiles);
         } catch (e) {
             toast(e.message, "error");
+        }
+    }
+
+    async function loadMoreFiles() {
+        if (filesState.loading || !filesState.hasMore) return;
+        filesState.loading = true;
+        const sentinel = $('#files-sentinel');
+        if (sentinel) sentinel.textContent = 'Loading more\u2026';
+        try {
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(filesState.path)}&offset=${filesState.offset}&limit=50`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const files = data.files || [];
+            const startIndex = loadedAudioFiles.length;
+            loadedAudioFiles.push(...files.map((f) => f.path));
+            filesState.offset += files.length;
+            filesState.hasMore = data.has_more;
+            appendFilesList(files, startIndex);
+        } catch (e) {
+            toast(e.message, "error");
+        } finally {
+            filesState.loading = false;
+        }
+    }
+
+    function appendFilesList(files, startIndex) {
+        const list = $("#files-list");
+        _unwatchSentinel('files-sentinel');
+        const sentinel = $('#files-sentinel');
+        if (sentinel) sentinel.remove();
+        list.insertAdjacentHTML('beforeend', files.map((f, i) => `
+            <div class="file-row">
+                <label class="checkbox-label" style="flex-shrink:0">
+                    <input type="checkbox" class="file-check" data-index="${startIndex + i}" checked>
+                </label>
+                <span class="file-icon">♪</span>
+                <span class="file-name" onclick="window.sfShowFileMeta('${esc(f.path)}')" style="cursor:pointer">${esc(f.name)}</span>
+                <span class="file-size">${fmtSize(f.size)}</span>
+            </div>
+        `).join(''));
+        if (filesState.hasMore) {
+            list.insertAdjacentHTML('beforeend', '<div id="files-sentinel" class="load-sentinel"></div>');
+            _watchSentinel('files-sentinel', loadMoreFiles);
         }
     }
 
@@ -307,7 +493,7 @@
                 <span class="file-name" onclick="window.sfShowFileMeta('${esc(f.path)}')" style="cursor:pointer">${esc(f.name)}</span>
                 <span class="file-size">${fmtSize(f.size)}</span>
             </div>
-        `).join("");
+        `).join("") + (filesState.hasMore ? '<div id="files-sentinel" class="load-sentinel"></div>' : '');
 
         // Select-all toggle
         $("#select-all-files").addEventListener("change", (e) => {
@@ -401,13 +587,63 @@
         const path = $("#analysis-path").value.trim();
         if (!path) return;
         try {
-            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(path)}`);
+            _unwatchSentinel('analysis-sentinel');
+            analysisState = { path, offset: 0, loading: false, hasMore: false };
+            analysisFiles = [];
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(path)}&offset=0&limit=50`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            analysisFiles = data.map((f) => f.path);
-            renderAnalysisFiles(data);
+            const files = data.files || [];
+            analysisFiles = files.map((f) => f.path);
+            analysisState.offset = files.length;
+            analysisState.hasMore = data.has_more;
+            renderAnalysisFiles(files);
+            if (analysisState.hasMore) _watchSentinel('analysis-sentinel', loadMoreAnalysisFiles);
         } catch (e) {
             toast(e.message, "error");
+        }
+    }
+
+    async function loadMoreAnalysisFiles() {
+        if (analysisState.loading || !analysisState.hasMore) return;
+        analysisState.loading = true;
+        const sentinel = $('#analysis-sentinel');
+        if (sentinel) sentinel.textContent = 'Loading more\u2026';
+        try {
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(analysisState.path)}&offset=${analysisState.offset}&limit=50`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const files = data.files || [];
+            const startIndex = analysisFiles.length;
+            analysisFiles.push(...files.map((f) => f.path));
+            analysisState.offset += files.length;
+            analysisState.hasMore = data.has_more;
+            appendAnalysisFiles(files, startIndex);
+        } catch (e) {
+            toast(e.message, "error");
+        } finally {
+            analysisState.loading = false;
+        }
+    }
+
+    function appendAnalysisFiles(files, startIndex) {
+        const list = $("#analysis-files");
+        _unwatchSentinel('analysis-sentinel');
+        const sentinel = $('#analysis-sentinel');
+        if (sentinel) sentinel.remove();
+        list.insertAdjacentHTML('beforeend', files.map((f, i) => `
+            <div class="file-row">
+                <label class="checkbox-label" style="flex-shrink:0">
+                    <input type="checkbox" class="analysis-check" data-index="${startIndex + i}" checked>
+                </label>
+                <span class="file-icon">♪</span>
+                <span class="file-name">${esc(f.name)}</span>
+                <span class="file-size">${fmtSize(f.size)}</span>
+            </div>
+        `).join(''));
+        if (analysisState.hasMore) {
+            list.insertAdjacentHTML('beforeend', '<div id="analysis-sentinel" class="load-sentinel"></div>');
+            _watchSentinel('analysis-sentinel', loadMoreAnalysisFiles);
         }
     }
 
@@ -429,7 +665,7 @@
                 <span class="file-name">${esc(f.name)}</span>
                 <span class="file-size">${fmtSize(f.size)}</span>
             </div>
-        `).join("");
+        `).join("") + (analysisState.hasMore ? '<div id="analysis-sentinel" class="load-sentinel"></div>' : '');
 
         $("#select-all-analysis").addEventListener("change", (e) => {
             $$(".analysis-check").forEach((cb) => cb.checked = e.target.checked);
@@ -495,11 +731,17 @@
         const dir = $("#resample-dir").value.trim();
         if (!dir) return;
         try {
-            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(dir)}`);
+            _unwatchSentinel('resample-sentinel');
+            resampleState = { path: dir, offset: 0, loading: false, hasMore: false };
+            resampleFiles = [];
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(dir)}&offset=0&limit=50`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            resampleFiles = data.map((f) => f.path);
-            // Get info
+            const files = data.files || [];
+            resampleFiles = files.map((f) => f.path);
+            resampleState.offset = files.length;
+            resampleState.hasMore = data.has_more;
+            // Get info for first page
             const infoResp = await fetch("/api/resample/info", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -513,11 +755,54 @@
                     <span class="file-name">${esc(f.path.split('/').pop())}</span>
                     <span class="file-size">${f.sample_rate ? f.sample_rate + 'Hz' : '-'} / ${f.bits_per_sample ? f.bits_per_sample + 'bit' : '-'}</span>
                 </div>
-            `).join("");
+            `).join("") + (resampleState.hasMore ? '<div id="resample-sentinel" class="load-sentinel"></div>' : '');
             $("#btn-resample").disabled = false;
             $("#btn-schedule-resample").disabled = false;
+            if (resampleState.hasMore) _watchSentinel('resample-sentinel', loadMoreResampleFiles);
         } catch (e) {
             toast(e.message, "error");
+        }
+    }
+
+    async function loadMoreResampleFiles() {
+        if (resampleState.loading || !resampleState.hasMore) return;
+        resampleState.loading = true;
+        const sentinel = $('#resample-sentinel');
+        if (sentinel) sentinel.textContent = 'Loading more\u2026';
+        try {
+            const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(resampleState.path)}&offset=${resampleState.offset}&limit=50`);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const files = data.files || [];
+            const newPaths = files.map((f) => f.path);
+            resampleFiles.push(...newPaths);
+            resampleState.offset += files.length;
+            resampleState.hasMore = data.has_more;
+            const infoResp = await fetch("/api/resample/info", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ paths: newPaths }),
+            });
+            const info = await infoResp.json();
+            const el = $("#resample-files");
+            _unwatchSentinel('resample-sentinel');
+            const sentinel2 = $('#resample-sentinel');
+            if (sentinel2) sentinel2.remove();
+            el.insertAdjacentHTML('beforeend', info.map((f) => `
+                <div class="file-row">
+                    <span class="file-icon">♪</span>
+                    <span class="file-name">${esc(f.path.split('/').pop())}</span>
+                    <span class="file-size">${f.sample_rate ? f.sample_rate + 'Hz' : '-'} / ${f.bits_per_sample ? f.bits_per_sample + 'bit' : '-'}</span>
+                </div>
+            `).join(''));
+            if (resampleState.hasMore) {
+                el.insertAdjacentHTML('beforeend', '<div id="resample-sentinel" class="load-sentinel"></div>');
+                _watchSentinel('resample-sentinel', loadMoreResampleFiles);
+            }
+        } catch (e) {
+            toast(e.message, "error");
+        } finally {
+            resampleState.loading = false;
         }
     }
 
@@ -851,6 +1136,32 @@
     }
 
     // Init
+        function _watchSentinel(sentinelId, callback) {
+            const old = _sectionObservers.get(sentinelId);
+            if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
+            const el = $(`#${sentinelId}`);
+            if (!el) return;
+            const obs = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) callback();
+            }, { rootMargin: '200px' });
+            obs.observe(el);
+            _sectionObservers.set(sentinelId, obs);
+        }
+
+        function _unwatchSentinel(sentinelId) {
+            const old = _sectionObservers.get(sentinelId);
+            if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
+        }
+
+        window.addEventListener("scroll", () => {
+            if (!searchPagination.hasMore || searchPagination.loading) return;
+            const searchVisible = !$("#search-results").classList.contains("hidden");
+            if (!searchVisible) return;
+            const nearBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 240;
+            if (nearBottom) loadMoreSearch();
+        }, { passive: true });
+
+        // Init
     updateQueueBadge();
     // Load history on init if history page is active
     if ($("#page-history").classList.contains("active")) loadHistory();
