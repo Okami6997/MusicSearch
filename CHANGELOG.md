@@ -15,6 +15,7 @@ This release adds Apple Music direct download support, playlist downloading (App
 
 - **URL Resolve: Apple Music platform** — Platform availability grid now shows Apple Music (7th platform) with availability status.
 - **URL Resolve: Playlist detection** — When a playlist URL is detected, the action button changes from "Download Track" to "Download Playlist" automatically.
+- **Settings: Full preferred-source list** — The Settings modal now includes all currently supported sources for preferred download routing: Tidal, Spotify, Apple Music, Qobuz, Amazon Music, and YouTube.
 - **Responsive UI: Mobile & tablet overhaul** — Completely redesigned the mobile layout with stacked navigation, full-width touch-friendly buttons (16px font on inputs to prevent iOS zoom), horizontally scrollable tab bars, compressed track rows (3-column on mobile), hidden metadata columns to save space, optimized modal dialogs (90vw width), and responsive styles for tablet (641–1024px) and desktop (>1024px) breakpoints.
 - **Files: Delete selected files** — Added a red "Delete Selected" button in the Files section toolbar that removes chosen audio files from disk after confirmation.
 - **Resample: Delete originals option** — Added a "Delete originals" checkbox in the Resample tab. When enabled, original (unresampled) files are automatically deleted after a successful resample, saving storage space.
