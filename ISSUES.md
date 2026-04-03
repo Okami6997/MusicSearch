@@ -22,6 +22,7 @@
 - [x] Add support for downloading from Apple Music
 - [x] Don't resample already resampled files. This can be done by checking the file name for the presence of the target bitrate or by storing the resampled files in a separate directory.
 - [x] Don't resample files that are already in the target format. This can be done by checking the file extension and skipping files that match the target format.
+- [x] Improve search performance — Search now runs all services (Qobuz, YouTube, iTunes) concurrently via ThreadPoolExecutor + as_completed, emitting partial results via SocketIO as each service finishes. Fastest results appear in the UI first.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads
