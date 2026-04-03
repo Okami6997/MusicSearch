@@ -22,6 +22,7 @@
     const $$ = (s) => document.querySelectorAll(s);
 
     const searchInput = $("#search-input");
+    const searchFilters = $("#search-filters");
     const urlInput = $("#url-input");
     const loading = $("#loading");
     const empty = $("#empty");
@@ -66,6 +67,36 @@
 
     // ── Search state for incremental rendering ──────────────────────────
     let _searchState = null;   // { q, doneSections, rendered }
+    let _latestSearchPayload = null;
+
+    $$(".search-filter-toggle").forEach((toggle) => {
+        toggle.addEventListener("change", () => {
+            if (_latestSearchPayload) {
+                _rerenderSearchFromState();
+            }
+        });
+    });
+
+    function _isSectionEnabled(sectionKey) {
+        const el = document.querySelector(`.search-filter-toggle[data-section="${sectionKey}"]`);
+        return el ? !!el.checked : true;
+    }
+
+    function _rerenderSearchFromState() {
+        const d = _latestSearchPayload || {};
+        renderSearchResults(
+            d.tracks || [],
+            d.artists || [],
+            d.albums || [],
+            d.youtube_tracks || [],
+            d.deezer_tracks || [],
+            d.soundcloud_tracks || [],
+            d.source || ""
+        );
+        if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
+            _watchSentinel("search-tracks-sentinel", loadMoreSearch);
+        }
+    }
 
     async function doSearch() {
         const q = searchInput.value.trim();
@@ -78,6 +109,7 @@
 
         // Show loading skeleton
         showLoading();
+        if (searchFilters) searchFilters.classList.remove("hidden");
 
         // Set up SocketIO listeners for incremental results
         const onPartial = (payload) => {
@@ -102,6 +134,7 @@
             const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
+            _latestSearchPayload = data;
 
             // Mark all sections as done so socket events are ignored
             _searchState.rendered = true;
@@ -120,7 +153,7 @@
                 data.soundcloud_tracks || [],
                 data.source || ""
             );
-            if (searchPagination.hasMore) _watchSentinel('search-tracks-sentinel', loadMoreSearch);
+            if (searchPagination.hasMore && _isSectionEnabled("tracks")) _watchSentinel('search-tracks-sentinel', loadMoreSearch);
         } catch (e) {
             _searchState = null;
             socket.off("search_partial", onPartial);
@@ -171,6 +204,15 @@
 
         // For partial: only render sections that have arrived so far
         const partialSource = source || "qobuz";
+        _latestSearchPayload = {
+            tracks: _searchState._tracks || [],
+            artists: _searchState._artists || [],
+            albums: _searchState._albums || [],
+            youtube_tracks: _searchState._ytTracks || [],
+            deezer_tracks: _searchState._dzTracks || [],
+            soundcloud_tracks: _searchState._scTracks || [],
+            source: partialSource,
+        };
         _renderIncrementalSearchResults(tracks, artists, albums, ytTracks, dzTracks, scTracks, partialSource);
     }
 
@@ -181,7 +223,14 @@
         const list = $("#tracks-list");
         results.classList.remove("hidden");
 
-        const allEmpty = !tracks.length && !artists.length && !albums.length && !youtubeTracks.length && !deezerTracks.length && !soundcloudTracks.length;
+        const visibleTracks = _isSectionEnabled("tracks") ? tracks : [];
+        const visibleArtists = _isSectionEnabled("artists") ? artists : [];
+        const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
+        const visibleYoutube = _isSectionEnabled("youtube") ? youtubeTracks : [];
+        const visibleDeezer = _isSectionEnabled("deezer") ? deezerTracks : [];
+        const visibleSoundcloud = _isSectionEnabled("soundcloud") ? soundcloudTracks : [];
+
+        const allEmpty = !visibleTracks.length && !visibleArtists.length && !visibleAlbums.length && !visibleYoutube.length && !visibleDeezer.length && !visibleSoundcloud.length;
         if (allEmpty) {
             // Nothing yet — show loading indicator
             list.innerHTML = '<p class="text-muted">Waiting for results...</p>';
@@ -191,39 +240,39 @@
         let html = "";
 
         // Artists — show data or loading placeholder
-        if (artists.length) {
-            html += _renderArtistsSection(artists, searchSource);
-        } else if (!_searchState.doneSections.has("qobuz_artists") && !_searchState.doneSections.has("itunes_artists")) {
+        if (visibleArtists.length) {
+            html += _renderArtistsSection(visibleArtists, searchSource);
+        } else if (_isSectionEnabled("artists") && !_searchState.doneSections.has("qobuz_artists") && !_searchState.doneSections.has("itunes_artists")) {
             html += '<div class="results-section"><h3 class="results-heading">Artists</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
         }
 
         // Albums
-        if (albums.length) {
-            html += _renderAlbumsSection(albums, searchSource);
-        } else if (!_searchState.doneSections.has("qobuz_albums") && !_searchState.doneSections.has("itunes_albums")) {
+        if (visibleAlbums.length) {
+            html += _renderAlbumsSection(visibleAlbums, searchSource);
+        } else if (_isSectionEnabled("albums") && !_searchState.doneSections.has("qobuz_albums") && !_searchState.doneSections.has("itunes_albums")) {
             html += '<div class="results-section"><h3 class="results-heading">Albums</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
         }
 
         // Tracks
-        if (tracks.length) {
-            html += _renderTracksSection(tracks, searchSource);
-        } else if (!_searchState.doneSections.has("qobuz_tracks") && !_searchState.doneSections.has("itunes_tracks")) {
+        if (visibleTracks.length) {
+            html += _renderTracksSection(visibleTracks, searchSource);
+        } else if (_isSectionEnabled("tracks") && !_searchState.doneSections.has("qobuz_tracks") && !_searchState.doneSections.has("itunes_tracks")) {
             html += '<div class="results-section"><h3 class="results-heading">Tracks</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
         }
 
         // YouTube
-        if (youtubeTracks.length) {
-            html += _renderYoutubeSection(youtubeTracks);
-        } else if (!_searchState.doneSections.has("youtube_tracks")) {
+        if (visibleYoutube.length) {
+            html += _renderYoutubeSection(visibleYoutube);
+        } else if (_isSectionEnabled("youtube") && !_searchState.doneSections.has("youtube_tracks")) {
             html += '';
         }
 
-        if (deezerTracks.length) {
-            html += _renderExternalServiceSection("Deezer", deezerTracks, "Deezer");
+        if (visibleDeezer.length) {
+            html += _renderExternalServiceSection("Deezer", visibleDeezer, "Deezer");
         }
 
-        if (soundcloudTracks.length) {
-            html += _renderExternalServiceSection("SoundCloud", soundcloudTracks, "SoundCloud");
+        if (visibleSoundcloud.length) {
+            html += _renderExternalServiceSection("SoundCloud", visibleSoundcloud, "SoundCloud");
         }
 
         list.innerHTML = html;
@@ -357,7 +406,14 @@
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
-        if (!tracks.length && !artists.length && !albums.length && !youtubeTracks.length && !deezerTracks.length && !soundcloudTracks.length) {
+        const visibleTracks = _isSectionEnabled("tracks") ? tracks : [];
+        const visibleArtists = _isSectionEnabled("artists") ? artists : [];
+        const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
+        const visibleYoutube = _isSectionEnabled("youtube") ? youtubeTracks : [];
+        const visibleDeezer = _isSectionEnabled("deezer") ? deezerTracks : [];
+        const visibleSoundcloud = _isSectionEnabled("soundcloud") ? soundcloudTracks : [];
+
+        if (!visibleTracks.length && !visibleArtists.length && !visibleAlbums.length && !visibleYoutube.length && !visibleDeezer.length && !visibleSoundcloud.length) {
             list.innerHTML = '<p class="text-muted">No results found.</p>';
             results.classList.remove("hidden");
             return;
@@ -366,9 +422,9 @@
         let html = "";
 
         // Artists section
-        if (artists.length) {
+        if (visibleArtists.length) {
             html += '<div class="results-section"><h3 class="results-heading">Artists</h3>';
-            html += artists.map((a) => `
+            html += visibleArtists.map((a) => `
                 <div class="expand-item">
                     <div class="track-row artist-row">
                         <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
@@ -389,9 +445,9 @@
         }
 
         // Albums section
-        if (albums.length) {
+        if (visibleAlbums.length) {
             html += '<div class="results-section"><h3 class="results-heading">Albums</h3>';
-            html += albums.map((al) => `
+            html += visibleAlbums.map((al) => `
                 <div class="expand-item">
                     <div class="track-row album-row">
                         <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
@@ -413,9 +469,9 @@
         }
 
         // Tracks section
-        if (tracks.length) {
+        if (visibleTracks.length) {
             html += '<div class="results-section" id="tracks-results-section"><h3 class="results-heading">Tracks</h3>';
-            html += tracks.map((t) => `
+            html += visibleTracks.map((t) => `
                 <div class="track-row">
                     <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
                          onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
@@ -435,9 +491,9 @@
         }
 
         // YouTube Music section
-        if (youtubeTracks.length) {
+        if (visibleYoutube.length) {
             html += '<div class="results-section"><h3 class="results-heading">YouTube Music</h3>';
-            html += youtubeTracks.map((t) => `
+            html += visibleYoutube.map((t) => `
                 <div class="track-row">
                     <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
                          onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
@@ -455,12 +511,12 @@
             html += '</div>';
         }
 
-        if (deezerTracks.length) {
-            html += _renderExternalServiceSection("Deezer", deezerTracks, "Deezer");
+        if (visibleDeezer.length) {
+            html += _renderExternalServiceSection("Deezer", visibleDeezer, "Deezer");
         }
 
-        if (soundcloudTracks.length) {
-            html += _renderExternalServiceSection("SoundCloud", soundcloudTracks, "SoundCloud");
+        if (visibleSoundcloud.length) {
+            html += _renderExternalServiceSection("SoundCloud", visibleSoundcloud, "SoundCloud");
         }
 
         list.innerHTML = html;
@@ -468,6 +524,7 @@
 
 
     function appendSearchTracks(tracks, hasMore, searchSource) {
+        if (!_isSectionEnabled("tracks")) return;
         const section = $('#tracks-results-section');
         if (!section) return;
         _unwatchSentinel('search-tracks-sentinel');
@@ -1435,8 +1492,17 @@
     });
 
     // ── Helpers ──────────────────────────────────────────────
-    function showLoading() { hideAll(); loading.classList.remove("hidden"); }
-    function showEmpty() { hideAll(); empty.classList.remove("hidden"); }
+    function showLoading() {
+        hideAll();
+        if (searchFilters) searchFilters.classList.remove("hidden");
+        loading.classList.remove("hidden");
+    }
+
+    function showEmpty() {
+        hideAll();
+        if (searchFilters) searchFilters.classList.add("hidden");
+        empty.classList.remove("hidden");
+    }
     function hideAll() {
         $("#search-results").classList.add("hidden");
         $("#resolve-results").classList.add("hidden");

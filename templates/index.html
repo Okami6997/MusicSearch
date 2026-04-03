@@ -50,6 +50,15 @@
                         <input type="text" id="search-input" placeholder="Search for songs by title, artist, or ISRC..." autocomplete="off">
                         <button id="btn-search" class="btn-primary">Search</button>
                     </div>
+                    <div id="search-filters" class="search-filters hidden" aria-label="Search result filters">
+                        <span class="search-filters-label">Show:</span>
+                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="tracks" checked>Tracks</label>
+                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="artists" checked>Artists</label>
+                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="albums" checked>Albums</label>
+                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="youtube" checked>YouTube</label>
+                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="deezer" checked>Deezer</label>
+                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="soundcloud" checked>SoundCloud</label>
+                    </div>
                 </div>
                 <div id="tab-search-url" class="tab-content">
                     <div class="search-bar">

@@ -14,6 +14,7 @@ This release adds playlist downloading (Spotify), significant download performan
 
 ### UI Improvements
 
+- **Search: Source filter toggles** — Added inline toggle pills in the Search tab so users can show/hide result sections for Tracks, Artists, Albums, YouTube, Deezer, and SoundCloud without running a new search.
 - **URL Resolve: Playlist detection** — When a playlist URL is detected, the action button changes from "Download Track" to "Download Playlist" automatically.
 - **Settings: Preferred-source list** — The Settings modal now includes all supported download sources: Tidal, Spotify, Qobuz, Amazon Music, and YouTube.
 - **Responsive UI: Mobile & tablet overhaul** — Completely redesigned the mobile layout with stacked navigation, full-width touch-friendly buttons (16px font on inputs to prevent iOS zoom), horizontally scrollable tab bars, compressed track rows (3-column on mobile), hidden metadata columns to save space, optimized modal dialogs (90vw width), and responsive styles for tablet (641–1024px) and desktop (>1024px) breakpoints.
