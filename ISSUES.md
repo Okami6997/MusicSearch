@@ -24,6 +24,7 @@
 - [x] Don't resample files that are already in the target format. This can be done by checking the file extension and skipping files that match the target format.
 - [x] Improve search performance — Search now runs all services (Qobuz, YouTube, iTunes) concurrently via ThreadPoolExecutor + as_completed, emitting partial results via SocketIO as each service finishes. Fastest results appear in the UI first.
 - [x] Add support for search and downloading from additional music streaming services (e.g., Deezer, SoundCloud) — Added Deezer and SoundCloud search integrations and UI sections; added Deezer/SoundCloud URL parsing + cross-platform SongLink resolution so Deezer/SoundCloud links can be downloaded via available mapped sources.
+- [x] Add filters/toggles in Search UI for result sections — Added inline filter pills for Tracks, Artists, Albums, YouTube, Deezer, and SoundCloud with live re-rendering for both full and incremental search results.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads
