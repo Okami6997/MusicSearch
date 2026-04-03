@@ -16,6 +16,7 @@ import requests as _req
 from .amazon import AmazonDownloader
 from .analysis import validate_download_duration
 from .applemusic import AppleMusicDownloader
+from .deezer import DeezerDownloader
 from .history import add_download
 from .lyrics import LyricsClient
 from .metadata import Metadata, download_cover, embed_metadata
@@ -86,6 +87,7 @@ class DownloadManager:
         self.qobuz = QobuzDownloader()
         self.amazon = AmazonDownloader()
         self.applemusic = AppleMusicDownloader()
+        self.deezer = DeezerDownloader()
         self.youtube = YouTubeDownloader()
         self.spotify = SpotifyDownloader()
         self.songlink = SongLinkClient()
@@ -375,6 +377,8 @@ class DownloadManager:
         amazon_url = links.get("amazon_url", "")
         youtube_url = links.get("youtube_url", "")
         spotify_url = links.get("spotify_url", "")
+        deezer_url = links.get("deezer_url", "")
+        soundcloud_url = links.get("soundcloud_url", "")
         apple_url = links.get("apple_url", "")
 
         def tidal_fn(d, f, cb):
@@ -395,6 +399,19 @@ class DownloadManager:
             q = "27" if self.quality == "HI_RES" else "6"
             return self.qobuz.download_track(isrc, d, q, f, cb)
 
+        def deezer_fn(d, f, cb):
+            if not deezer_url:
+                raise ValueError("No Deezer link")
+            q = "27" if self.quality == "HI_RES" else "6"
+            return self.deezer.download_track(
+                deezer_url=deezer_url,
+                output_dir=d,
+                filename=f,
+                quality=q,
+                progress_cb=cb,
+                isrc=isrc,
+            )
+
         def amazon_fn(d, f, cb):
             if not amazon_url:
                 raise ValueError("No Amazon link")
@@ -410,9 +427,19 @@ class DownloadManager:
                     task.title, task.artist, d, f, cb)
             raise ValueError("No YouTube URL and no title/artist for search")
 
+        def soundcloud_fn(d, f, cb):
+            # Use mapped YouTube URL first (from SongLink), then text search.
+            if youtube_url:
+                return self.youtube.download_track(youtube_url, d, f, cb)
+            if task.title and task.artist:
+                return self.youtube.search_and_download(task.title, task.artist, d, f, cb)
+            raise ValueError("No mapped stream for SoundCloud track")
+
         order = {
             "tidal": ("Tidal", tidal_fn, bool(tidal_url)),
             "spotify": ("Spotify", spotify_fn, bool(spotify_url)),
+            "deezer": ("Deezer", deezer_fn, bool(deezer_url)),
+            "soundcloud": ("SoundCloud", soundcloud_fn, bool(soundcloud_url) or bool(youtube_url) or bool(task.title and task.artist)),
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
             "youtube": ("YouTube", youtube_fn,
@@ -443,6 +470,8 @@ class DownloadManager:
             fn_map = {
                 "tidal": ("Tidal", tidal_fn),
                 "spotify": ("Spotify", spotify_fn),
+                "deezer": ("Deezer", deezer_fn),
+                "soundcloud": ("SoundCloud", soundcloud_fn),
                 "qobuz": ("Qobuz", qobuz_fn),
                 "amazon": ("Amazon", amazon_fn),
                 "youtube": ("YouTube", youtube_fn),

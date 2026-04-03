@@ -1,6 +1,6 @@
 # MusicSearch
 
-A web-based music search and download application. Search or paste any music platform URL, then download audio from Tidal, Spotify, Qobuz, Amazon Music, or YouTube Music with embedded metadata, cover art, lyrics, and genre info — optimized for Navidrome and Lidarr compatibility.
+A web-based music search and download application. Search or paste any music platform URL, then download audio from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, or SoundCloud with embedded metadata, cover art, lyrics, and genre info — optimized for Navidrome and Lidarr compatibility.
 
 > **Note:** Apple Music is not available as a download source. See [Limitations](#limitations) below.
 
@@ -9,7 +9,8 @@ A web-based music search and download application. Search or paste any music pla
 - **Music Search** — Search by title, artist, or ISRC across Qobuz, iTunes, Deezer, and SoundCloud
 - **Search Source Toggles** — Show/hide result sections (Tracks, Artists, Albums, YouTube, Deezer, SoundCloud) using inline filter pills in the Search UI
 - **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
-- **Multi-Source Download** — Downloads from Tidal, Spotify, Qobuz, Amazon Music, and YouTube Music with automatic failover
+- **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
+- **Qobuz/Deezer Resolver Fallbacks** — Download resolvers use multiple provider endpoints with quality fallback for more resilient FLAC retrieval when a single upstream API is unavailable
 - **Lossless Audio** — FLAC (16-bit and 24-bit Hi-Res) from Tidal/Qobuz/Amazon; MP3 320kbps fallback from YouTube
 - **Rich Metadata Embedding** — Title, artist, album, album artist, track number, disc number, total tracks, year, genre (MusicBrainz), label, ISRC, and cover art
 - **Lyrics** — Synced (LRC) and plain lyrics from LRCLIB, embedded into files
@@ -62,7 +63,7 @@ Settings are available via the web UI (gear icon):
 | Setting | Options | Default |
 |---------|---------|---------|
 | Download Directory | Any writable path | `~/Music/SongsFetch` |
-| Preferred Source | Tidal, Spotify, Qobuz, Amazon Music, YouTube | Tidal |
+| Preferred Source | Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube, SoundCloud | Tidal |
 | Quality | Lossless (16-bit), Hi-Res (24-bit) | Lossless |
 | Embed Lyrics | On/Off | On |
 

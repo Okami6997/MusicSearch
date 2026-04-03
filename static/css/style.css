@@ -13,6 +13,20 @@
     color-scheme: dark;
 }
 html, body { height: 100%; background: var(--bg); color: var(--text); }
+#app {
+    min-height: 100%;
+    position: relative;
+    isolation: isolate;
+}
+#app::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.82)),
+        url("/static/img/site-fire.jpg") center center / cover no-repeat;
+}
 a { color: var(--primary); text-decoration: none; }
 button { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
 input, select { font: inherit; color: inherit; }

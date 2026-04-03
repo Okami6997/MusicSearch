@@ -1,39 +1,67 @@
-"""Qobuz downloader - downloads FLAC tracks via Qobuz API proxies."""
+"""Qobuz downloader - robust ISRC resolver + proxy download flow."""
 
 import os
 import random
+from typing import Callable, Dict
 
 import requests
 
 
+def build_qobuz_api_url(api_base: str, track_id: int, quality: str) -> str:
+    if "qbz.afkarxyz.fun" in api_base or "qbz.afkarxyz.qzz.io" in api_base:
+        return f"{api_base}{track_id}?quality={quality}"
+    return f"{api_base}{track_id}&quality={quality}"
+
+
 class QobuzDownloader:
-    """Download FLAC tracks from Qobuz via proxy APIs."""
+    """Download FLAC tracks from Qobuz-compatible provider APIs."""
 
     APP_ID = "798273057"
-    APIS = [
-        "https://dab.yeet.su/api/stream?trackId=",
-        "https://dabmusic.xyz/api/stream?trackId=",
-        "https://qbz.afkarxyz.qzz.io/api/track/",
-    ]
     UA = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/145.0.0.0 Safari/537.36"
     )
 
-    def __init__(self):
+    APIS = [
+        "https://dab.yeet.su/api/stream?trackId=",
+        "https://dabmusic.xyz/api/stream?trackId=",
+        "https://qbz.afkarxyz.fun/api/track/",
+        "https://qbz.afkarxyz.qzz.io/api/track/",
+    ]
+
+    def __init__(self, timeout: float = 60.0, app_id: str = APP_ID):
+        self.timeout = timeout
+        self.app_id = app_id
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        self.progress_callback: Callable[[int, int], None] = lambda _c, _t: None
+
+    def set_progress_callback(self, callback: Callable[[int, int], None]) -> None:
+        self.progress_callback = callback
+
+    def _search_by_isrc(self, isrc: str) -> Dict:
+        url = (
+            f"https://www.qobuz.com/api.json/0.2/track/search"
+            f"?query={isrc}&limit=1&app_id={self.app_id}"
+        )
+        headers = {"User-Agent": self.UA}
+        resp = self.session.get(url, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            try:
+                err_msg = resp.json().get("message", f"Status {resp.status_code}")
+            except Exception:
+                err_msg = f"Status {resp.status_code}"
+            raise Exception(f"Qobuz API error: {err_msg}")
+
+        data = resp.json()
+        items = data.get("tracks", {}).get("items", [])
+        if not items:
+            raise Exception(f"Track not found for ISRC: {isrc}")
+        return items[0]
 
     def search_by_isrc(self, isrc: str) -> dict:
-        url = (f"https://www.qobuz.com/api.json/0.2/track/search"
-               f"?query={isrc}&limit=1&app_id={self.APP_ID}")
-        resp = self.session.get(url, timeout=30)
-        resp.raise_for_status()
-        items = resp.json().get("tracks", {}).get("items", [])
-        if not items:
-            raise ValueError(f"Track not found on Qobuz for ISRC: {isrc}")
-        t = items[0]
+        t = self._search_by_isrc(isrc)
         return {
             "id": t.get("id"),
             "title": t.get("title", ""),
@@ -46,59 +74,120 @@ class QobuzDownloader:
             "album": t.get("album", {}).get("title", ""),
         }
 
-    def get_download_url(self, track_id: int, quality: str = "6") -> str:
-        if not quality or quality == "5":
-            quality = "6"
+    def _download_from_standard(self, api_base: str, track_id: int, quality: str) -> str:
+        url = build_qobuz_api_url(api_base, track_id, quality)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/145.0.0.0 Safari/537.36"
+            )
+        }
+        resp = self.session.get(url, headers=headers, timeout=self.timeout)
+        if resp.status_code != 200:
+            raise Exception(f"status {resp.status_code}")
+        if not resp.text.strip():
+            raise Exception("empty body")
 
-        apis = list(self.APIS)
-        random.shuffle(apis)
-        errors = []
-        for base in apis:
-            try:
-                sep = "?" if "qbz.afkarxyz" in base else "&"
-                url = f"{base}{track_id}{sep}quality={quality}"
-                r = self.session.get(url, timeout=60)
-                if r.status_code != 200:
-                    raise ValueError(f"status {r.status_code}")
-                data = r.json()
-                dl = (data.get("url")
-                      or data.get("data", {}).get("url", ""))
-                if dl:
-                    return dl
-                raise ValueError("No URL in response")
-            except Exception as e:
-                errors.append(f"{base}: {e}")
+        try:
+            data = resp.json()
+        except Exception:
+            raise Exception("invalid response")
 
-        if quality == "27":
-            return self.get_download_url(track_id, "7")
-        if quality == "7":
-            return self.get_download_url(track_id, "6")
-        raise ValueError(f"All Qobuz APIs failed: {'; '.join(errors)}")
+        if isinstance(data, dict):
+            if data.get("url"):
+                return data["url"]
+            if data.get("data", {}).get("url"):
+                return data["data"]["url"]
+        raise Exception("invalid response payload")
 
-    def download_file(self, url: str, output_path: str,
-                      progress_cb=None) -> str:
-        resp = self.session.get(url, stream=True, timeout=120)
-        resp.raise_for_status()
-        total = int(resp.headers.get("content-length", 0))
-        done = 0
-        with open(output_path, "wb") as f:
-            for chunk in resp.iter_content(65536):
-                f.write(chunk)
-                done += len(chunk)
-                if progress_cb and total:
-                    progress_cb(done, total)
+    def get_download_url(self, track_id: int, quality: str = "6", allow_fallback: bool = True) -> str:
+        quality_code = quality if quality not in ("", "5") else "6"
+
+        def attempt_download(qual: str) -> str:
+            providers = []
+            for api in self.APIS:
+                providers.append({
+                    "name": f"Standard({api})",
+                    "func": lambda a=api: self._download_from_standard(a, track_id, qual),
+                })
+
+            random.shuffle(providers)
+            last_err = None
+            for p in providers:
+                try:
+                    url = p["func"]()
+                    if url:
+                        return url
+                except Exception as e:
+                    last_err = e
+            raise Exception(last_err or "all providers failed")
+
+        try:
+            return attempt_download(quality_code)
+        except Exception:
+            if allow_fallback:
+                if quality_code == "27":
+                    try:
+                        return attempt_download("7")
+                    except Exception:
+                        pass
+                    quality_code = "7"
+                if quality_code == "7":
+                    try:
+                        return attempt_download("6")
+                    except Exception:
+                        pass
+            raise Exception("all APIs and fallbacks failed")
+
+    def _stream_download(self, url: str, filepath: str, progress_cb=None) -> None:
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+        temp_path = filepath + ".part"
+        try:
+            with self.session.get(url, stream=True, timeout=300) as resp:
+                if resp.status_code != 200:
+                    raise Exception(f"download failed with status {resp.status_code}")
+
+                total = int(resp.headers.get("Content-Length") or 0)
+                downloaded = 0
+                with open(temp_path, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=256 * 1024):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        cb = progress_cb or self.progress_callback
+                        if cb:
+                            cb(downloaded, total)
+            os.replace(temp_path, filepath)
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
+    def download_file(self, url: str, output_path: str, progress_cb=None) -> str:
+        self._stream_download(url, output_path, progress_cb)
         return output_path
 
-    def download_track(self, isrc: str, output_dir: str, quality: str = "6",
-                       filename: str = "", progress_cb=None) -> str:
+    def download_track(
+        self,
+        isrc: str,
+        output_dir: str,
+        quality: str = "6",
+        filename: str = "",
+        progress_cb=None,
+    ) -> str:
         track = self.search_by_isrc(isrc)
-        dl = self.get_download_url(track["id"], quality)
+        dl = self.get_download_url(int(track["id"]), quality, allow_fallback=True)
         if not filename:
             t = self._safe(track.get("title", str(track["id"])))
             a = self._safe(track.get("artist", "Unknown"))
             filename = f"{t} - {a}.flac"
-        return self.download_file(dl, os.path.join(output_dir, filename),
-                                  progress_cb)
+        output_path = os.path.join(output_dir, filename)
+        self._stream_download(dl, output_path, progress_cb)
+        return output_path
 
     @staticmethod
     def _safe(name: str) -> str:

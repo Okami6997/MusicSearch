@@ -10,13 +10,15 @@ This release adds playlist downloading (Spotify), significant download performan
 - **Download: Performance optimizations** — Added in-memory caching for SongLink URL resolutions and ISRC lookups (5-minute TTL) to avoid repeated API calls for the same content. Increased the download worker pool from 3 to 5 concurrent workers for faster batch downloads.
 - **Resample: Smart skip logic for already-processed files** — Resample now skips files that are already inside the target resample folder, files whose target output already exists, and FLAC files that already match the requested sample rate/bit depth.
 - **Search: Additional service integrations (Deezer + SoundCloud)** — Added dedicated Deezer and SoundCloud search clients and integrated both into `/api/search` so results appear in their own UI sections.
+- **Download: Deezer source integration** — Added a dedicated Deezer downloader flow (Deezer metadata + ISRC provider resolution), and integrated `deezer` as a first-class preferred source in the download order.
 - **Download: Deezer/SoundCloud URL support** — Added Deezer/SoundCloud URL parsing and SongLink soundcloud URL propagation so pasted links from these services can resolve cross-platform targets and download from available mapped sources.
+- **Download: Qobuz resolver hardening** — Refactored the Qobuz resolver/downloader to use a provider fallback chain with quality fallback (`27` -> `7` -> `6`) and robust streamed writes (`.part` temp file + atomic rename) for improved reliability when individual providers fail.
 
 ### UI Improvements
 
 - **Search: Source filter toggles** — Added inline toggle pills in the Search tab so users can show/hide result sections for Tracks, Artists, Albums, YouTube, Deezer, and SoundCloud without running a new search.
 - **URL Resolve: Playlist detection** — When a playlist URL is detected, the action button changes from "Download Track" to "Download Playlist" automatically.
-- **Settings: Preferred-source list** — The Settings modal now includes all supported download sources: Tidal, Spotify, Qobuz, Amazon Music, and YouTube.
+- **Settings: Preferred-source list** — The Settings modal now includes all supported download sources: Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube, and SoundCloud.
 - **Responsive UI: Mobile & tablet overhaul** — Completely redesigned the mobile layout with stacked navigation, full-width touch-friendly buttons (16px font on inputs to prevent iOS zoom), horizontally scrollable tab bars, compressed track rows (3-column on mobile), hidden metadata columns to save space, optimized modal dialogs (90vw width), and responsive styles for tablet (641–1024px) and desktop (>1024px) breakpoints.
 - **Files: Delete selected files** — Added a red "Delete Selected" button in the Files section toolbar that removes chosen audio files from disk after confirmation.
 - **Resample: Delete originals option** — Added a "Delete originals" checkbox in the Resample tab. When enabled, original (unresampled) files are automatically deleted after a successful resample, saving storage space.
