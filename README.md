@@ -2,6 +2,8 @@
 
 A web-based music search and download application. Search or paste any music platform URL, then download audio from Tidal, Spotify, Qobuz, Amazon Music, or YouTube Music with embedded metadata, cover art, lyrics, and genre info — optimized for Navidrome and Lidarr compatibility.
 
+> **Note:** Apple Music is not available as a download source. See [Limitations](#limitations) below.
+
 ## Features
 
 - **Music Search** — Search by title, artist, or ISRC across Qobuz with iTunes fallback
@@ -59,7 +61,7 @@ Settings are available via the web UI (gear icon):
 | Setting | Options | Default |
 |---------|---------|---------|
 | Download Directory | Any writable path | `~/Music/SongsFetch` |
-| Preferred Source | Tidal, Spotify, Qobuz, Amazon, YouTube | Tidal |
+| Preferred Source | Tidal, Spotify, Qobuz, Amazon Music, YouTube | Tidal |
 | Quality | Lossless (16-bit), Hi-Res (24-bit) | Lossless |
 | Embed Lyrics | On/Off | On |
 
@@ -120,6 +122,14 @@ MusicSearch/
     ├── css/style.css       # Dark theme styles
     └── js/app.js           # Frontend JavaScript
 ```
+
+## Limitations
+
+### Apple Music Download
+
+Apple Music is not supported as a download source. The public iTunes API only provides 30-second preview clips; full-length tracks are FairPlay DRM-encrypted and can only be decrypted inside Apple's own authenticated clients. There is no valid approach to downloading full tracks via any public API.
+
+Apple Music search results and URL resolution (via SongLink) continue to work for metadata and cross-platform link lookup. When a track is found via iTunes search or an Apple Music URL is pasted, the download will automatically fall through to the next available source (Tidal → Spotify → Qobuz → Amazon Music → YouTube).
 
 ## Media Server Integration
 
