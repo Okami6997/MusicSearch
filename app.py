@@ -229,13 +229,14 @@ def search():
             pass
 
     offset = request.args.get("offset", 0, type=int)
-    sid = request.sid or ""   # SocketIO session id (empty if not a socket request)
+    sid = getattr(request, "sid", "") or ""   # empty for plain HTTP requests
 
     # ── Concurrent search helper ────────────────────────────────────────────
     def _run_concurrent(q: str, offset: int, fallback: bool = False) -> dict:
         """Run all service searches concurrently; emit partial SocketIO events
         as each one completes, then return the final aggregated dict."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        from backend.qobuz import QobuzDownloader
 
         def _do_qobuz_tracks():
             qobuz_dl = QobuzDownloader()
@@ -369,6 +370,14 @@ def search():
                 })
             return out
 
+        def _do_deezer_tracks():
+            from backend.deezer import DeezerClient
+            return DeezerClient().search_tracks(q, limit=10)
+
+        def _do_soundcloud_tracks():
+            from backend.soundcloud import SoundCloudClient
+            return SoundCloudClient().search_tracks(q, limit=10)
+
         def _do_youtube():
             return _youtube_search(q, 10)
 
@@ -379,6 +388,8 @@ def search():
                 ("qobuz_artists",  _do_qobuz_artists),
                 ("qobuz_albums",   _do_qobuz_albums),
                 ("youtube_tracks", _do_youtube),
+                ("deezer_tracks", _do_deezer_tracks),
+                ("soundcloud_tracks", _do_soundcloud_tracks),
             ]
             if fallback:
                 tasks += [
@@ -394,7 +405,7 @@ def search():
 
         result = {
             "tracks": [], "artists": [], "albums": [],
-            "youtube_tracks": [], "source": "qobuz",
+            "youtube_tracks": [], "deezer_tracks": [], "soundcloud_tracks": [], "source": "qobuz",
             "has_more": False, "offset": offset, "q": q,
         }
         if fallback:
@@ -438,6 +449,18 @@ def search():
                         socketio.emit("search_partial", {
                             "section": "youtube_tracks", "data": data, "done": list(done_labels),
                         }, room=sid)
+                elif label == "deezer_tracks":
+                    result["deezer_tracks"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "deezer_tracks", "data": data, "done": list(done_labels),
+                        }, room=sid)
+                elif label == "soundcloud_tracks":
+                    result["soundcloud_tracks"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "soundcloud_tracks", "data": data, "done": list(done_labels),
+                        }, room=sid)
                 elif label == "itunes_tracks":
                     result["tracks"] = data
                     result["source"] = "itunes"
@@ -464,6 +487,8 @@ def search():
             socketio.emit("search_done", {
                 "tracks": result["tracks"], "artists": result["artists"],
                 "albums": result["albums"], "youtube_tracks": result["youtube_tracks"],
+                "deezer_tracks": result["deezer_tracks"],
+                "soundcloud_tracks": result["soundcloud_tracks"],
                 "source": result["source"], "has_more": result["has_more"],
                 "offset": result["offset"],
             }, room=sid)

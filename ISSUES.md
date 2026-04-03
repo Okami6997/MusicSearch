@@ -23,10 +23,10 @@
 - [x] Don't resample already resampled files. This can be done by checking the file name for the presence of the target bitrate or by storing the resampled files in a separate directory.
 - [x] Don't resample files that are already in the target format. This can be done by checking the file extension and skipping files that match the target format.
 - [x] Improve search performance — Search now runs all services (Qobuz, YouTube, iTunes) concurrently via ThreadPoolExecutor + as_completed, emitting partial results via SocketIO as each service finishes. Fastest results appear in the UI first.
+- [x] Add support for search and downloading from additional music streaming services (e.g., Deezer, SoundCloud) — Added Deezer and SoundCloud search integrations and UI sections; added Deezer/SoundCloud URL parsing + cross-platform SongLink resolution so Deezer/SoundCloud links can be downloaded via available mapped sources.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads
-- [ ] Add support for downloading from additional music streaming services
 - [ ] Create a feature to manage downloaded music (e.g., organize by artist, album)
 - [ ] Implement a feature to automatically update the music library with new releases
 - [ ] Add a feature to allow users to customize the download quality (e.g., bitrate)

@@ -116,6 +116,8 @@
                 data.artists || [],
                 data.albums || [],
                 data.youtube_tracks || [],
+                data.deezer_tracks || [],
+                data.soundcloud_tracks || [],
                 data.source || ""
             );
             if (searchPagination.hasMore) _watchSentinel('search-tracks-sentinel', loadMoreSearch);
@@ -136,12 +138,16 @@
         const artists   = section === "artists"       ? data : (_searchState._artists   || []);
         const albums    = section === "albums"         ? data : (_searchState._albums    || []);
         const ytTracks  = section === "youtube_tracks" ? data : (_searchState._ytTracks  || []);
+        const dzTracks  = section === "deezer_tracks" ? data : (_searchState._dzTracks || []);
+        const scTracks  = section === "soundcloud_tracks" ? data : (_searchState._scTracks || []);
 
         // Cache data for later sections
         if (section === "tracks")        _searchState._tracks    = data;
         if (section === "artists")       _searchState._artists   = data;
         if (section === "albums")        _searchState._albums    = data;
         if (section === "youtube_tracks") _searchState._ytTracks = data;
+        if (section === "deezer_tracks") _searchState._dzTracks = data;
+        if (section === "soundcloud_tracks") _searchState._scTracks = data;
 
         // Update pagination state if tracks section arrived
         if (section === "tracks") {
@@ -165,17 +171,17 @@
 
         // For partial: only render sections that have arrived so far
         const partialSource = source || "qobuz";
-        _renderIncrementalSearchResults(tracks, artists, albums, ytTracks, partialSource);
+        _renderIncrementalSearchResults(tracks, artists, albums, ytTracks, dzTracks, scTracks, partialSource);
     }
 
     /** Render only the sections that have data so far, with loading indicators for pending sections. */
-    function _renderIncrementalSearchResults(tracks, artists, albums, youtubeTracks, searchSource) {
+    function _renderIncrementalSearchResults(tracks, artists, albums, youtubeTracks, deezerTracks, soundcloudTracks, searchSource) {
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
         results.classList.remove("hidden");
 
-        const allEmpty = !tracks.length && !artists.length && !albums.length && !youtubeTracks.length;
+        const allEmpty = !tracks.length && !artists.length && !albums.length && !youtubeTracks.length && !deezerTracks.length && !soundcloudTracks.length;
         if (allEmpty) {
             // Nothing yet — show loading indicator
             list.innerHTML = '<p class="text-muted">Waiting for results...</p>';
@@ -210,6 +216,14 @@
             html += _renderYoutubeSection(youtubeTracks);
         } else if (!_searchState.doneSections.has("youtube_tracks")) {
             html += '';
+        }
+
+        if (deezerTracks.length) {
+            html += _renderExternalServiceSection("Deezer", deezerTracks, "Deezer");
+        }
+
+        if (soundcloudTracks.length) {
+            html += _renderExternalServiceSection("SoundCloud", soundcloudTracks, "SoundCloud");
         }
 
         list.innerHTML = html;
@@ -300,6 +314,25 @@
         `).join('')}</div>`;
     }
 
+    function _renderExternalServiceSection(title, tracks, serviceLabel) {
+        if (!tracks.length) return '';
+        return `<div class="results-section"><h3 class="results-heading">${esc(title)}</h3>${tracks.map((t) => `
+            <div class="track-row">
+                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                <div class="track-info">
+                    <div class="track-title">${esc(t.title || t.id)}</div>
+                    <div class="track-artist">${esc(t.artist || '')}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                    <div class="track-meta">${serviceBadge(t.service || serviceLabel)}</div>
+                </div>
+                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+                <div class="track-actions">
+                    <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'${escJs(t.year || '')}')">Download</button>
+                </div>
+            </div>
+        `).join('')}</div>`;
+    }
+
     async function loadMoreSearch() {
         if (searchPagination.loading || !searchPagination.hasMore) return;
         searchPagination.loading = true;
@@ -320,11 +353,11 @@
         }
     }
 
-    function renderSearchResults(tracks, artists, albums, youtubeTracks, searchSource) {
+    function renderSearchResults(tracks, artists, albums, youtubeTracks, deezerTracks, soundcloudTracks, searchSource) {
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
-        if (!tracks.length && !artists.length && !albums.length && !youtubeTracks.length) {
+        if (!tracks.length && !artists.length && !albums.length && !youtubeTracks.length && !deezerTracks.length && !soundcloudTracks.length) {
             list.innerHTML = '<p class="text-muted">No results found.</p>';
             results.classList.remove("hidden");
             return;
@@ -420,6 +453,14 @@
                 </div>
             `).join("");
             html += '</div>';
+        }
+
+        if (deezerTracks.length) {
+            html += _renderExternalServiceSection("Deezer", deezerTracks, "Deezer");
+        }
+
+        if (soundcloudTracks.length) {
+            html += _renderExternalServiceSection("SoundCloud", soundcloudTracks, "SoundCloud");
         }
 
         list.innerHTML = html;

@@ -184,6 +184,10 @@ class DownloadManager:
                     links["amazon_url"] = task.url
                 elif parsed["platform"] == "youtube":
                     links["youtube_url"] = task.url
+                elif parsed["platform"] == "deezer" and parsed["type"] == "track":
+                    links["deezer_url"] = task.url
+                elif parsed["platform"] == "soundcloud":
+                    links["soundcloud_url"] = task.url
                 elif parsed["platform"] == "spotify" and parsed["type"] == "track":
                     links["spotify_url"] = task.url
                 elif parsed["platform"] == "apple_music":
@@ -202,6 +206,7 @@ class DownloadManager:
                     links.setdefault("youtube_url", sl.get("youtube_url", ""))
                     links.setdefault("spotify_url", sl.get("spotify_url", ""))
                     links.setdefault("apple_url", sl.get("apple_url", ""))
+                    links.setdefault("soundcloud_url", sl.get("soundcloud_url", ""))
                     if not isrc:
                         isrc = sl.get("isrc", "")
                 except Exception:

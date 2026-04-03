@@ -71,6 +71,9 @@ def parse_music_url(url: str) -> dict:
         if m:
             return {"platform": "apple_music", "type": "song", "id": m.group(1)}
         return {"platform": "apple_music", "type": "unknown", "id": ""}
+    if "soundcloud.com" in url:
+        # SoundCloud permalink URLs generally map to tracks.
+        return {"platform": "soundcloud", "type": "track", "id": ""}
     # Generic — let song.link try to resolve it
     return {"platform": "unknown", "type": "unknown", "id": ""}
 
@@ -95,6 +98,7 @@ class SongLinkClient:
             "deezer_url": links.get("deezer_url", ""),
             "youtube_url": links.get("youtube_url", ""),
             "spotify_url": links.get("spotify_url", ""),
+            "soundcloud_url": links.get("soundcloud_url", ""),
             "isrc": links.get("isrc", ""),
         }
 
@@ -155,6 +159,7 @@ class SongLinkClient:
                 result["qobuz_url"] = lbp.get("qobuz", {}).get("url", "")
                 result["youtube_url"] = lbp.get("youtubeMusic", {}).get("url", "")
                 result["apple_url"] = lbp.get("appleMusic", {}).get("url", "")
+                result["soundcloud_url"] = lbp.get("soundcloud", {}).get("url", "")
                 for entity in data.get("entitiesByUniqueId", {}).values():
                     if entity.get("isrc"):
                         result["isrc"] = entity["isrc"]

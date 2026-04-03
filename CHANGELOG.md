@@ -9,6 +9,8 @@ This release adds playlist downloading (Spotify), significant download performan
 - **Download: Playlist download** — Added `POST /api/download/playlist` endpoint to expand a Spotify playlist URL into individual tracks and queue them for download. The URL Resolve view now shows a "Download Playlist" button when a playlist URL is detected.
 - **Download: Performance optimizations** — Added in-memory caching for SongLink URL resolutions and ISRC lookups (5-minute TTL) to avoid repeated API calls for the same content. Increased the download worker pool from 3 to 5 concurrent workers for faster batch downloads.
 - **Resample: Smart skip logic for already-processed files** — Resample now skips files that are already inside the target resample folder, files whose target output already exists, and FLAC files that already match the requested sample rate/bit depth.
+- **Search: Additional service integrations (Deezer + SoundCloud)** — Added dedicated Deezer and SoundCloud search clients and integrated both into `/api/search` so results appear in their own UI sections.
+- **Download: Deezer/SoundCloud URL support** — Added Deezer/SoundCloud URL parsing and SongLink soundcloud URL propagation so pasted links from these services can resolve cross-platform targets and download from available mapped sources.
 
 ### UI Improvements
 
