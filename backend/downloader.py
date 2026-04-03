@@ -384,22 +384,6 @@ class DownloadManager:
                 raise ValueError("No Spotify link")
             return self.spotify.download_track(spotify_url, d, f, cb)
 
-        def apple_fn(d, f, cb):
-            # Apple Music doesn't provide direct audio URLs without subscription auth.
-            # We fall back to using the preview URL (30-second clip) if available,
-            # otherwise use YouTube search as the actual download source.
-            if not apple_url:
-                raise ValueError("No Apple Music link")
-            preview = self.applemusic.get_track_stream_url(
-                int(self.applemusic.parse_apple_music_url(apple_url)["id"])
-            )
-            if preview:
-                # Download the preview (short M4A) — user should be aware it's a preview
-                import urllib.request
-                urllib.request.urlretrieve(preview, os.path.join(d, f.replace(".flac", ".m4a")))
-                return os.path.join(d, f.replace(".flac", ".m4a"))
-            raise ValueError("No preview URL available for Apple Music track")
-
         def qobuz_fn(d, f, cb):
             if not isrc:
                 raise ValueError("No ISRC")
@@ -424,15 +408,12 @@ class DownloadManager:
         order = {
             "tidal": ("Tidal", tidal_fn, bool(tidal_url)),
             "spotify": ("Spotify", spotify_fn, bool(spotify_url)),
-            "apple_music": ("Apple Music", apple_fn, bool(apple_url)),
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
             "youtube": ("YouTube", youtube_fn,
                         bool(youtube_url) or bool(task.title and task.artist)),
         }
         pref = self.preferred_source.lower()
-        if apple_url and "music.apple.com" in apple_url:
-            pref = "apple_music"
 
         # Preferred source goes first if it has data
         if pref in order:
@@ -457,7 +438,6 @@ class DownloadManager:
             fn_map = {
                 "tidal": ("Tidal", tidal_fn),
                 "spotify": ("Spotify", spotify_fn),
-                "apple_music": ("Apple Music", apple_fn),
                 "qobuz": ("Qobuz", qobuz_fn),
                 "amazon": ("Amazon", amazon_fn),
                 "youtube": ("YouTube", youtube_fn),

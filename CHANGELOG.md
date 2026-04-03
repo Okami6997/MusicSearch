@@ -2,24 +2,26 @@
 
 ## v1.2.0 (Unreleased)
 
-This release adds Apple Music direct download support, playlist downloading (Apple Music & Spotify), and significant download performance improvements through caching and increased parallelism.
+This release adds playlist downloading (Spotify), significant download performance improvements through caching and increased parallelism, and smart resample skip logic.
 
 ### New Features
 
-- **Download: Apple Music direct download** — Added `AppleMusicDownloader` client that uses the iTunes Search API to look up album and track metadata, resolve Apple Music URLs, and expand album URLs into individual track records. Apple Music is now included in the download source priority order alongside Tidal, Spotify, Qobuz, Amazon, and YouTube.
-- **Download: Playlist download** — Added `POST /api/download/playlist` endpoint to expand a playlist URL (Apple Music or Spotify) into individual tracks and queue them for download. The URL Resolve view now shows a "Download Playlist" button when a playlist URL is detected, and Apple Music platform is shown in the platform availability grid.
+- **Download: Playlist download** — Added `POST /api/download/playlist` endpoint to expand a Spotify playlist URL into individual tracks and queue them for download. The URL Resolve view now shows a "Download Playlist" button when a playlist URL is detected.
 - **Download: Performance optimizations** — Added in-memory caching for SongLink URL resolutions and ISRC lookups (5-minute TTL) to avoid repeated API calls for the same content. Increased the download worker pool from 3 to 5 concurrent workers for faster batch downloads.
 - **Resample: Smart skip logic for already-processed files** — Resample now skips files that are already inside the target resample folder, files whose target output already exists, and FLAC files that already match the requested sample rate/bit depth.
 
 ### UI Improvements
 
-- **URL Resolve: Apple Music platform** — Platform availability grid now shows Apple Music (7th platform) with availability status.
 - **URL Resolve: Playlist detection** — When a playlist URL is detected, the action button changes from "Download Track" to "Download Playlist" automatically.
-- **Settings: Full preferred-source list** — The Settings modal now includes all currently supported sources for preferred download routing: Tidal, Spotify, Apple Music, Qobuz, Amazon Music, and YouTube.
+- **Settings: Preferred-source list** — The Settings modal now includes all supported download sources: Tidal, Spotify, Qobuz, Amazon Music, and YouTube.
 - **Responsive UI: Mobile & tablet overhaul** — Completely redesigned the mobile layout with stacked navigation, full-width touch-friendly buttons (16px font on inputs to prevent iOS zoom), horizontally scrollable tab bars, compressed track rows (3-column on mobile), hidden metadata columns to save space, optimized modal dialogs (90vw width), and responsive styles for tablet (641–1024px) and desktop (>1024px) breakpoints.
 - **Files: Delete selected files** — Added a red "Delete Selected" button in the Files section toolbar that removes chosen audio files from disk after confirmation.
 - **Resample: Delete originals option** — Added a "Delete originals" checkbox in the Resample tab. When enabled, original (unresampled) files are automatically deleted after a successful resample, saving storage space.
 - **Resample: Skipped-file reporting** — The Resample result summary and toast now include skipped counts so users can clearly see when files were intentionally not reprocessed.
+
+### Known Limitations
+
+- **Apple Music download not supported** — Apple Music (iTunes) only exposes 30-second preview clips via its public API. Full-length tracks are DRM-protected and can only be played through Apple's authenticated clients. As a result, Apple Music has been removed as a download source. Apple Music search results and URL resolution continue to work for metadata purposes; downloads fall through to Tidal, Spotify, Qobuz, Amazon, or YouTube instead.
 
 ### Bug Fixes
 
