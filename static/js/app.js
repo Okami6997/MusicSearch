@@ -64,16 +64,51 @@
         if (e.key === "Enter") doSearch();
     });
 
+    // ── Search state for incremental rendering ──────────────────────────
+    let _searchState = null;   // { q, doneSections, rendered }
+
     async function doSearch() {
         const q = searchInput.value.trim();
         if (!q) return;
         _unwatchSentinel('search-tracks-sentinel');
+
+        // Reset incremental state
         searchPagination = { q, offset: 0, loading: false, hasMore: false };
+        _searchState = { q, doneSections: new Set(), rendered: false };
+
+        // Show loading skeleton
         showLoading();
+
+        // Set up SocketIO listeners for incremental results
+        const onPartial = (payload) => {
+            if (!_searchState || payload.q !== _searchState.q) return;
+            _searchState.doneSections.add(payload.section);
+            // If HTTP response hasn't rendered yet, update incrementally
+            if (!_searchState.rendered) {
+                _applyPartialResults(payload);
+            }
+        };
+        const onDone = (payload) => {
+            if (!_searchState || payload.q !== _searchState.q) return;
+            _searchState.rendered = true;
+            _searchState = null;
+            socket.off("search_partial", onPartial);
+            socket.off("search_done", onDone);
+        };
+        socket.on("search_partial", onPartial);
+        socket.on("search_done", onDone);
+
         try {
             const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
+
+            // Mark all sections as done so socket events are ignored
+            _searchState.rendered = true;
+            _searchState = null;
+            socket.off("search_partial", onPartial);
+            socket.off("search_done", onDone);
+
             searchPagination.hasMore = !!data.has_more;
             searchPagination.offset = (data.tracks || []).length;
             renderSearchResults(
@@ -85,9 +120,184 @@
             );
             if (searchPagination.hasMore) _watchSentinel('search-tracks-sentinel', loadMoreSearch);
         } catch (e) {
+            _searchState = null;
+            socket.off("search_partial", onPartial);
+            socket.off("search_done", onDone);
             toast(e.message, "error");
             showEmpty();
         }
+    }
+
+    /** Apply incremental partial results from a SocketIO search_partial event. */
+    function _applyPartialResults(payload) {
+        const { section, data, done, source, has_more } = payload;
+        // Build a minimal results object with whatever sections are done so far
+        const tracks    = section === "tracks"        ? data : (_searchState._tracks    || []);
+        const artists   = section === "artists"       ? data : (_searchState._artists   || []);
+        const albums    = section === "albums"         ? data : (_searchState._albums    || []);
+        const ytTracks  = section === "youtube_tracks" ? data : (_searchState._ytTracks  || []);
+
+        // Cache data for later sections
+        if (section === "tracks")        _searchState._tracks    = data;
+        if (section === "artists")       _searchState._artists   = data;
+        if (section === "albums")        _searchState._albums    = data;
+        if (section === "youtube_tracks") _searchState._ytTracks = data;
+
+        // Update pagination state if tracks section arrived
+        if (section === "tracks") {
+            searchPagination.hasMore = !!has_more;
+            searchPagination.offset = (data || []).length;
+            if (has_more) {
+                // Inject sentinel div if not already present
+                let sentinel = document.getElementById("search-tracks-sentinel");
+                if (!sentinel) {
+                    const sectionEl = document.getElementById("tracks-results-section");
+                    if (sectionEl) {
+                        sentinel = document.createElement("div");
+                        sentinel.id = "search-tracks-sentinel";
+                        sentinel.className = "load-sentinel";
+                        sentinel.textContent = "Scroll to load more tracks";
+                        sectionEl.appendChild(sentinel);
+                    }
+                }
+            }
+        }
+
+        // For partial: only render sections that have arrived so far
+        const partialSource = source || "qobuz";
+        _renderIncrementalSearchResults(tracks, artists, albums, ytTracks, partialSource);
+    }
+
+    /** Render only the sections that have data so far, with loading indicators for pending sections. */
+    function _renderIncrementalSearchResults(tracks, artists, albums, youtubeTracks, searchSource) {
+        hideAll();
+        const results = $("#search-results");
+        const list = $("#tracks-list");
+        results.classList.remove("hidden");
+
+        const allEmpty = !tracks.length && !artists.length && !albums.length && !youtubeTracks.length;
+        if (allEmpty) {
+            // Nothing yet — show loading indicator
+            list.innerHTML = '<p class="text-muted">Waiting for results...</p>';
+            return;
+        }
+
+        let html = "";
+
+        // Artists — show data or loading placeholder
+        if (artists.length) {
+            html += _renderArtistsSection(artists, searchSource);
+        } else if (!_searchState.doneSections.has("qobuz_artists") && !_searchState.doneSections.has("itunes_artists")) {
+            html += '<div class="results-section"><h3 class="results-heading">Artists</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
+        }
+
+        // Albums
+        if (albums.length) {
+            html += _renderAlbumsSection(albums, searchSource);
+        } else if (!_searchState.doneSections.has("qobuz_albums") && !_searchState.doneSections.has("itunes_albums")) {
+            html += '<div class="results-section"><h3 class="results-heading">Albums</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
+        }
+
+        // Tracks
+        if (tracks.length) {
+            html += _renderTracksSection(tracks, searchSource);
+        } else if (!_searchState.doneSections.has("qobuz_tracks") && !_searchState.doneSections.has("itunes_tracks")) {
+            html += '<div class="results-section"><h3 class="results-heading">Tracks</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
+        }
+
+        // YouTube
+        if (youtubeTracks.length) {
+            html += _renderYoutubeSection(youtubeTracks);
+        } else if (!_searchState.doneSections.has("youtube_tracks")) {
+            html += '';
+        }
+
+        list.innerHTML = html;
+    }
+
+    function _renderArtistsSection(artists, searchSource) {
+        if (!artists.length) return '';
+        return `<div class="results-section"><h3 class="results-heading">Artists</h3>${artists.map((a) => `
+            <div class="expand-item">
+                <div class="track-row artist-row">
+                    <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(a.name)}</div>
+                        <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
+                        <div class="track-meta">${serviceBadge(a.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}</div>
+                    </div>
+                    <div class="track-actions album-actions">
+                        <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'artist','${esc(String(a.id || ''))}','${esc(a.source || searchSource || 'qobuz')}')">Expand</button>
+                    </div>
+                </div>
+                <div class="expand-panel hidden"></div>
+            </div>
+        `).join('')}</div>`;
+    }
+
+    function _renderAlbumsSection(albums, searchSource) {
+        if (!albums.length) return '';
+        return `<div class="results-section"><h3 class="results-heading">Albums</h3>${albums.map((al) => `
+            <div class="expand-item">
+                <div class="track-row album-row">
+                    <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
+                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                    <div class="track-info">
+                        <div class="track-title">${esc(al.title)}</div>
+                        <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
+                        <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
+                    </div>
+                    <div class="track-actions album-actions">
+                        <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'album','${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}')">Expand</button>
+                        <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
+                    </div>
+                </div>
+                <div class="expand-panel hidden"></div>
+            </div>
+        `).join('')}</div>`;
+    }
+
+    function _renderTracksSection(tracks, searchSource) {
+        if (!tracks.length) return '';
+        let html = `<div class="results-section" id="tracks-results-section"><h3 class="results-heading">Tracks</h3>`;
+        html += tracks.map((t) => `
+            <div class="track-row">
+                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                <div class="track-info">
+                    <div class="track-title">${esc(t.title)}</div>
+                    <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                    <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
+                </div>
+                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+                <div class="track-actions">
+                    <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
+                </div>
+            </div>
+        `).join("");
+        if (searchPagination.hasMore) html += '<div id="search-tracks-sentinel" class="load-sentinel">Scroll to load more tracks</div>';
+        html += '</div>';
+        return html;
+    }
+
+    function _renderYoutubeSection(youtubeTracks) {
+        if (!youtubeTracks.length) return '';
+        return `<div class="results-section"><h3 class="results-heading">YouTube Music</h3>${youtubeTracks.map((t) => `
+            <div class="track-row">
+                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                <div class="track-info">
+                    <div class="track-title">${esc(t.title || t.id)}</div>
+                    <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                    <div class="track-meta">${serviceBadge(t.service || 'YouTube Music')} <span>MP3 320kbps</span></div>
+                </div>
+                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+                <div class="track-actions">
+                    <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
+                </div>
+            </div>
+        `).join('')}</div>`;
     }
 
     async function loadMoreSearch() {

@@ -210,18 +210,18 @@ def resolve_url():
 
 @app.route("/api/search", methods=["GET"])
 def search():
-    """Search for tracks by query or ISRC."""
+    """Search for tracks by query or ISRC. Emits partial results via SocketIO as
+    each service responds, then returns the final aggregated payload."""
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify({"error": "Query required"}), 400
 
-    # If it looks like an ISRC, search by ISRC via Qobuz
+    # If it looks like an ISRC, search by ISRC via Qobuz (fast single-result path)
     if len(q) == 12 and q[:2].isalpha() and q[2:].isalnum():
         try:
             from backend.qobuz import QobuzDownloader
             qobuz = QobuzDownloader()
             track = qobuz.search_by_isrc(q)
-            # Normalize to frontend-expected format
             track.setdefault("cover_url", "")
             track["duration_ms"] = (track.pop("duration", 0) or 0) * 1000
             return jsonify({"tracks": [track], "source": "qobuz"})
@@ -229,18 +229,19 @@ def search():
             pass
 
     offset = request.args.get("offset", 0, type=int)
-    # Try Qobuz search first
-    try:
-        from backend.qobuz import QobuzDownloader
-        qobuz = QobuzDownloader()
+    sid = request.sid or ""   # SocketIO session id (empty if not a socket request)
 
-        # Run all Qobuz searches + YouTube concurrently
-        from concurrent.futures import ThreadPoolExecutor as _TPE
+    # ── Concurrent search helper ────────────────────────────────────────────
+    def _run_concurrent(q: str, offset: int, fallback: bool = False) -> dict:
+        """Run all service searches concurrently; emit partial SocketIO events
+        as each one completes, then return the final aggregated dict."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def _do_qobuz_tracks():
-            r = qobuz.session.get(
+            qobuz_dl = QobuzDownloader()
+            r = qobuz_dl.session.get(
                 "https://www.qobuz.com/api.json/0.2/track/search",
-                params={"query": q, "limit": 20, "offset": offset, "app_id": qobuz.APP_ID},
+                params={"query": q, "limit": 20, "offset": offset, "app_id": qobuz_dl.APP_ID},
                 timeout=15,
             )
             r.raise_for_status()
@@ -248,8 +249,7 @@ def search():
             for t in r.json().get("tracks", {}).get("items", []):
                 album_data = t.get("album", {})
                 out.append({
-                    "id": t.get("id"),
-                    "title": t.get("title", ""),
+                    "id": t.get("id"), "title": t.get("title", ""),
                     "artist": t.get("performer", {}).get("name", ""),
                     "album": album_data.get("title", ""),
                     "cover_url": album_data.get("image", {}).get("large", ""),
@@ -262,15 +262,15 @@ def search():
                     "total_tracks": t.get("album", {}).get("tracks_count", 0),
                     "disc_number": t.get("media_number", 0) or 1,
                     "year": (album_data.get("release_date_original") or "")[:4],
-                    "source": "qobuz",
-                    "service": "Qobuz",
+                    "source": "qobuz", "service": "Qobuz",
                 })
             return out
 
         def _do_qobuz_artists():
-            r = qobuz.session.get(
+            qobuz_dl = QobuzDownloader()
+            r = qobuz_dl.session.get(
                 "https://www.qobuz.com/api.json/0.2/artist/search",
-                params={"query": q, "limit": 5, "app_id": qobuz.APP_ID},
+                params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
                 timeout=15,
             )
             r.raise_for_status()
@@ -278,66 +278,34 @@ def search():
             for a in r.json().get("artists", {}).get("items", []):
                 img = a.get("image", {})
                 out.append({
-                    "id": a.get("id"),
-                    "name": a.get("name", ""),
+                    "id": a.get("id"), "name": a.get("name", ""),
                     "image_url": img.get("large", "") or img.get("medium", "") or img.get("small", ""),
                     "albums_count": a.get("albums_count", 0),
-                    "source": "qobuz",
-                    "service": "Qobuz",
+                    "source": "qobuz", "service": "Qobuz",
                 })
             return out
 
         def _do_qobuz_albums():
-            r = qobuz.session.get(
+            qobuz_dl = QobuzDownloader()
+            r = qobuz_dl.session.get(
                 "https://www.qobuz.com/api.json/0.2/album/search",
-                params={"query": q, "limit": 5, "app_id": qobuz.APP_ID},
+                params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
                 timeout=15,
             )
             r.raise_for_status()
             out = []
             for al in r.json().get("albums", {}).get("items", []):
                 out.append({
-                    "id": al.get("id"),
-                    "title": al.get("title", ""),
+                    "id": al.get("id"), "title": al.get("title", ""),
                     "artist": al.get("artist", {}).get("name", ""),
                     "cover_url": al.get("image", {}).get("large", ""),
                     "tracks_count": al.get("tracks_count", 0),
                     "release_date": al.get("release_date_original", ""),
                     "year": (al.get("release_date_original") or "")[:4],
                     "hires": al.get("hires_streamable", False),
-                    "source": "qobuz",
-                    "service": "Qobuz",
+                    "source": "qobuz", "service": "Qobuz",
                 })
             return out
-
-        with _TPE(max_workers=4) as _ex:
-            _ft  = _ex.submit(_do_qobuz_tracks)
-            _fa  = _ex.submit(_do_qobuz_artists) if offset == 0 else None
-            _fal = _ex.submit(_do_qobuz_albums) if offset == 0 else None
-            _fyt = _ex.submit(_youtube_search, q, 10) if offset == 0 else None
-            try:     tracks    = _ft.result()
-            except Exception: tracks    = []
-            try:     artists   = _fa.result() if _fa else []
-            except Exception: artists   = []
-            try:     albums    = _fal.result() if _fal else []
-            except Exception: albums    = []
-            try:     yt_tracks = _fyt.result() if _fyt else []
-            except Exception: yt_tracks = []
-
-        if tracks or artists or albums:
-            return jsonify({
-                "tracks": tracks, "artists": artists, "albums": albums,
-                "youtube_tracks": yt_tracks,
-                "source": "qobuz",
-                "has_more": len(tracks) >= 20,
-                "offset": offset,
-            })
-    except Exception:
-        pass
-
-    # Fallback: iTunes Search API (free, no auth required) — all queries in parallel
-    try:
-        from concurrent.futures import ThreadPoolExecutor as _TPE
 
         def _do_itunes_tracks():
             r = http_requests.get(
@@ -352,20 +320,14 @@ def search():
                 if artwork:
                     artwork = artwork.replace("100x100bb", "600x600bb")
                 out.append({
-                    "id": t.get("trackId"),
-                    "title": t.get("trackName", ""),
-                    "artist": t.get("artistName", ""),
-                    "album": t.get("collectionName", ""),
+                    "id": t.get("trackId"), "title": t.get("trackName", ""),
+                    "artist": t.get("artistName", ""), "album": t.get("collectionName", ""),
                     "cover_url": artwork,
                     "duration_ms": t.get("trackTimeMillis", 0) or 0,
-                    "url": t.get("trackViewUrl", ""),
-                    "isrc": "",
-                    "hires": False,
-                    "bit_depth": 0,
-                    "sample_rate": 0,
+                    "url": t.get("trackViewUrl", ""), "isrc": "",
+                    "hires": False, "bit_depth": 0, "sample_rate": 0,
                     "year": (t.get("releaseDate") or "")[:4],
-                    "source": "itunes",
-                    "service": "Apple Music",
+                    "source": "itunes", "service": "Apple Music",
                 })
             return out
 
@@ -379,12 +341,9 @@ def search():
             out = []
             for a in r.json().get("results", []):
                 out.append({
-                    "id": a.get("artistId"),
-                    "name": a.get("artistName", ""),
-                    "image_url": "",
-                    "albums_count": 0,
-                    "source": "itunes",
-                    "service": "Apple Music",
+                    "id": a.get("artistId"), "name": a.get("artistName", ""),
+                    "image_url": "", "albums_count": 0,
+                    "source": "itunes", "service": "Apple Music",
                 })
             return out
 
@@ -401,43 +360,130 @@ def search():
                 if art:
                     art = art.replace("100x100bb", "600x600bb")
                 out.append({
-                    "id": al.get("collectionId"),
-                    "title": al.get("collectionName", ""),
-                    "artist": al.get("artistName", ""),
-                    "cover_url": art,
+                    "id": al.get("collectionId"), "title": al.get("collectionName", ""),
+                    "artist": al.get("artistName", ""), "cover_url": art,
                     "tracks_count": al.get("trackCount", 0),
                     "release_date": al.get("releaseDate", ""),
                     "year": (al.get("releaseDate") or "")[:4],
-                    "hires": False,
-                    "source": "itunes",
-                    "service": "Apple Music",
+                    "hires": False, "source": "itunes", "service": "Apple Music",
                 })
             return out
 
-        with _TPE(max_workers=4) as _ex:
-            _ft  = _ex.submit(_do_itunes_tracks)
-            _fa  = _ex.submit(_do_itunes_artists) if offset == 0 else None
-            _fal = _ex.submit(_do_itunes_albums) if offset == 0 else None
-            _fyt = _ex.submit(_youtube_search, q, 10) if offset == 0 else None
-            try:     tracks    = _ft.result()
-            except Exception: tracks    = []
-            try:     artists   = _fa.result() if _fa else []
-            except Exception: artists   = []
-            try:     albums    = _fal.result() if _fal else []
-            except Exception: albums    = []
-            try:     yt_tracks = _fyt.result() if _fyt else []
-            except Exception: yt_tracks = []
+        def _do_youtube():
+            return _youtube_search(q, 10)
 
-        return jsonify({
-            "tracks": tracks, "artists": artists, "albums": albums,
-            "youtube_tracks": yt_tracks,
-            "source": "itunes",
-            "has_more": len(tracks) >= 20,
-            "offset": offset,
-        })
+        # Build list of (label, future) pairs so we can emit when each completes
+        if offset == 0:
+            tasks = [
+                ("qobuz_tracks",   _do_qobuz_tracks),
+                ("qobuz_artists",  _do_qobuz_artists),
+                ("qobuz_albums",   _do_qobuz_albums),
+                ("youtube_tracks", _do_youtube),
+            ]
+            if fallback:
+                tasks += [
+                    ("itunes_tracks",  _do_itunes_tracks),
+                    ("itunes_artists", _do_itunes_artists),
+                    ("itunes_albums",  _do_itunes_albums),
+                ]
+        else:
+            # Pagination: only tracks
+            tasks = [("qobuz_tracks", _do_qobuz_tracks)]
+            if fallback:
+                tasks.append(("itunes_tracks", _do_itunes_tracks))
+
+        result = {
+            "tracks": [], "artists": [], "albums": [],
+            "youtube_tracks": [], "source": "qobuz",
+            "has_more": False, "offset": offset, "q": q,
+        }
+        if fallback:
+            result["source"] = "itunes"
+
+        done_labels = set()
+        with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
+            futures = {ex.submit(fn): label for label, fn in tasks}
+            for future in as_completed(futures):
+                label = futures[future]
+                done_labels.add(label)
+                try:
+                    data = future.result()
+                except Exception as exc:
+                    data = []
+                    print(f"[search] {label} failed: {exc}")
+
+                if label == "qobuz_tracks":
+                    result["tracks"] = data
+                    result["has_more"] = len(data) >= 20
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "tracks", "data": data, "done": list(done_labels),
+                            "source": result["source"], "has_more": result["has_more"],
+                        }, room=sid)
+                elif label == "qobuz_artists":
+                    result["artists"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "artists", "data": data, "done": list(done_labels),
+                        }, room=sid)
+                elif label == "qobuz_albums":
+                    result["albums"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "albums", "data": data, "done": list(done_labels),
+                        }, room=sid)
+                elif label == "youtube_tracks":
+                    result["youtube_tracks"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "youtube_tracks", "data": data, "done": list(done_labels),
+                        }, room=sid)
+                elif label == "itunes_tracks":
+                    result["tracks"] = data
+                    result["source"] = "itunes"
+                    result["has_more"] = len(data) >= 20
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "tracks", "data": data, "done": list(done_labels),
+                            "source": "itunes", "has_more": result["has_more"],
+                        }, room=sid)
+                elif label == "itunes_artists":
+                    result["artists"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "artists", "data": data, "done": list(done_labels),
+                        }, room=sid)
+                elif label == "itunes_albums":
+                    result["albums"] = data
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "albums", "data": data, "done": list(done_labels),
+                        }, room=sid)
+
+        if sid:
+            socketio.emit("search_done", {
+                "tracks": result["tracks"], "artists": result["artists"],
+                "albums": result["albums"], "youtube_tracks": result["youtube_tracks"],
+                "source": result["source"], "has_more": result["has_more"],
+                "offset": result["offset"],
+            }, room=sid)
+
+        return result
+
+    # ── Try Qobuz first; fall back to iTunes on any error ──────────────────
+    try:
+        result = _run_concurrent(q, offset, fallback=False)
+        if result["tracks"] or result["artists"] or result["albums"]:
+            return jsonify(result)
+    except Exception:
+        pass
+
+    # iTunes fallback
+    try:
+        result = _run_concurrent(q, offset, fallback=True)
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": f"Search failed: {str(e)}"}), 500
-
 
 @app.route("/api/search/expand", methods=["GET"])
 def search_expand():
