@@ -183,7 +183,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
                     </div>
                 </div>
             `).join("");
@@ -205,7 +205,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','','${esc(t.title || '')}','${esc(t.artist || '')}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
                     </div>
                 </div>
             `).join("");
@@ -233,7 +233,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
-                        <button class="btn-dl" onclick="window.sfDownload('${esc(t.url || '')}','${esc(t.isrc || '')}','${esc(t.title)}','${esc(t.artist)}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                        <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
                     </div>
                 </div>
             `).join('');
@@ -304,7 +304,7 @@
             // Single track download button
             const dlUrl = data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
             if (dlUrl || isrc) {
-                actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownload('${esc(dlUrl)}','${esc(isrc)}','','','','',0)">Download Track</button>`;
+                actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownload('${escJs(dlUrl)}','${escJs(isrc)}','','','','',0)">Download Track</button>`;
             }
         }
         $("#resolve-actions").innerHTML = actionsHtml;
@@ -421,7 +421,7 @@
                     <span class="expand-main">${esc(t.title || "Untitled")}${t.artist ? ` <span class="text-muted">- ${esc(t.artist)}</span>` : ""}</span>
                     <span class="expand-time">${fmtDuration(t.duration_ms || 0)}</span>
                     <span class="expand-action">
-                        <button class="btn-ghost" onclick="window.sfDownload('${esc(t.url || '')}','${esc(t.isrc || '')}','${esc(t.title || '')}','${esc(t.artist || '')}','${esc(t.album || '')}','${esc(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${esc(t.year || '')}')">Download</button>
+                        <button class="btn-ghost" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
                     </span>
                 </div>
             `).join("")}</div>`;
@@ -1214,6 +1214,11 @@
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML.replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+    }
+
+    function escJs(str) {
+        // Safe for single-quoted JS string literals inside HTML attributes.
+        return esc(str).replace(/&#39;/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "");
     }
 
     function serviceBadge(name) {
