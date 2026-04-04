@@ -59,6 +59,8 @@ class DownloadTask:
     error: str = ""
     output_path: str = ""
     source: str = ""
+    batch_id: str = ""
+    batch_seq: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -68,6 +70,7 @@ class DownloadTask:
             "status": self.status, "progress": self.progress,
             "error": self.error, "output_path": self.output_path,
             "source": self.source, "year": self.year,
+            "batch_id": self.batch_id,
         }
 
 
@@ -103,12 +106,16 @@ class DownloadManager:
         self._sl_cache: dict[str, dict] = {}
         self._isrc_cache: dict[str, dict] = {}
         self._max_workers = 5
+        # Batch ordering: buffer completed tasks until they can be flushed in seq order
+        self._batch_next_seq: dict[str, int] = {}
+        self._batch_buffer: dict[str, dict[int, tuple]] = {}  # bid -> {seq: (task, filepath)}
 
     def add_track(self, url: str = "", isrc: str = "", title: str = "",
                   artist: str = "", album: str = "", cover_url: str = "",
                   duration_ms: int = 0, track_number: int = 0,
                   total_tracks: int = 0, disc_number: int = 0,
-                  total_discs: int = 0, year: str = "") -> str:
+                  total_discs: int = 0, year: str = "",
+                  batch_id: str = "", batch_seq: int = 0) -> str:
         """Add a track to the download queue. Provide URL or ISRC."""
         task_id = str(uuid.uuid4())[:8]
         task = DownloadTask(
@@ -117,6 +124,7 @@ class DownloadManager:
             album=album, year=year, cover_url=cover_url, duration_ms=duration_ms,
             track_number=track_number, total_tracks=total_tracks,
             disc_number=disc_number, total_discs=total_discs,
+            batch_id=batch_id, batch_seq=batch_seq,
         )
         with self._lock:
             self.tasks[task_id] = task
@@ -334,11 +342,21 @@ class DownloadManager:
             except Exception:
                 pass
 
+            # Batch-ordered completion: buffer and flush in sequence order
+            if task.batch_id:
+                self._flush_batch_completion(task, failed=False)
+            else:
+                task.status = DownloadStatus.COMPLETED
+                self._notify(task)
+
         except Exception as e:
-            task.status = DownloadStatus.FAILED
             task.error = str(e)
             traceback.print_exc()
-            self._notify(task)
+            if task.batch_id:
+                self._flush_batch_completion(task, failed=True)
+            else:
+                task.status = DownloadStatus.FAILED
+                self._notify(task)
 
     def _download(self, task: DownloadTask, links: dict, isrc: str,
                   progress_cb) -> str:
@@ -493,6 +511,34 @@ class DownloadManager:
                 sources.append(fn_map[pref])
 
         return sources
+
+    def _flush_batch_completion(self, task: DownloadTask, failed: bool = False):
+        """Buffer a completed/failed batch task and flush all consecutive
+        completed tasks starting from the next expected sequence number."""
+        bid = task.batch_id
+        with self._lock:
+            if bid not in self._batch_next_seq:
+                # Determine the lowest batch_seq for this batch
+                seqs = [t.batch_seq for t in self.tasks.values()
+                        if t.batch_id == bid]
+                self._batch_next_seq[bid] = min(seqs) if seqs else 0
+            self._batch_buffer.setdefault(bid, {})[task.batch_seq] = (task, failed)
+
+            # Flush all consecutive completed entries
+            while self._batch_next_seq[bid] in self._batch_buffer.get(bid, {}):
+                seq = self._batch_next_seq[bid]
+                buf_task, buf_failed = self._batch_buffer[bid].pop(seq)
+                buf_task.status = DownloadStatus.FAILED if buf_failed else DownloadStatus.COMPLETED
+                self._batch_next_seq[bid] = seq + 1
+                self._notify(buf_task)
+
+            # Clean up batch tracking when all tasks are done
+            batch_tasks = [t for t in self.tasks.values() if t.batch_id == bid]
+            all_done = all(t.status in (DownloadStatus.COMPLETED, DownloadStatus.FAILED)
+                          for t in batch_tasks)
+            if all_done and bid in self._batch_next_seq:
+                del self._batch_next_seq[bid]
+                self._batch_buffer.pop(bid, None)
 
     def _embed(self, filepath: str, task: DownloadTask, isrc: str):
         meta = Metadata(

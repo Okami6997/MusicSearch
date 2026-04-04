@@ -731,8 +731,9 @@ def download_batch():
     tracks = body.get("tracks", [])
     if not tracks:
         return jsonify({"error": "tracks list required"}), 400
+    batch_id = str(uuid.uuid4())[:8]
     ids = []
-    for t in tracks:
+    for idx, t in enumerate(tracks):
         task_id = download_manager.add_track(
             url=t.get("url", ""),
             isrc=t.get("isrc", ""),
@@ -746,6 +747,8 @@ def download_batch():
             disc_number=int(t.get("disc_number", 0)),
             total_discs=int(t.get("total_discs", 0)),
             year=str(t.get("year", ""))[:4],
+            batch_id=batch_id,
+            batch_seq=idx,
         )
         ids.append(task_id)
     return jsonify({"task_ids": ids})
@@ -760,6 +763,7 @@ def download_album():
         return jsonify({"error": "album_id required"}), 400
 
     task_ids = []
+    batch_id = str(uuid.uuid4())[:8]
 
     if source == "qobuz":
         try:
@@ -784,7 +788,7 @@ def download_album():
             if not tracks:
                 return jsonify({"error": "No tracks found for this album"}), 404
 
-            for t in tracks:
+            for idx, t in enumerate(tracks):
                 task_id = download_manager.add_track(
                     isrc=t.get("isrc", ""),
                     title=t.get("title", ""),
@@ -797,6 +801,8 @@ def download_album():
                     disc_number=int(t.get("media_number", 0) or 1),
                     total_discs=total_discs,
                     year=album_year,
+                    batch_id=batch_id,
+                    batch_seq=idx,
                 )
                 task_ids.append(task_id)
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
@@ -823,7 +829,7 @@ def download_album():
             total_tracks = int(tracks[0].get("trackCount", 0) or len(tracks))
             album_year = (tracks[0].get("releaseDate") or "")[:4]
 
-            for t in tracks:
+            for idx, t in enumerate(tracks):
                 task_id = download_manager.add_track(
                     url=t.get("trackViewUrl", ""),
                     title=t.get("trackName", ""),
@@ -836,6 +842,8 @@ def download_album():
                     disc_number=int(t.get("discNumber", 0) or 1),
                     total_discs=int(t.get("discCount", 0) or 1),
                     year=album_year,
+                    batch_id=batch_id,
+                    batch_seq=idx,
                 )
                 task_ids.append(task_id)
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
@@ -856,6 +864,7 @@ def download_playlist():
         return jsonify({"error": "url required"}), 400
 
     task_ids = []
+    playlist_batch_id = str(uuid.uuid4())[:8]
 
     if source in ("apple_music", "apple"):
         try:
@@ -865,7 +874,7 @@ def download_playlist():
             if not tracks:
                 return jsonify({"error": "Could not retrieve playlist tracks. Note: Apple Music playlists require authentication."}), 404
 
-            for t in tracks:
+            for idx, t in enumerate(tracks):
                 task_id = download_manager.add_track(
                     url=t.get("url", ""),
                     isrc=t.get("isrc", ""),
@@ -879,6 +888,8 @@ def download_playlist():
                     disc_number=int(t.get("disc_number", 0) or 1),
                     total_discs=1,
                     year=str(t.get("year", ""))[:4],
+                    batch_id=playlist_batch_id,
+                    batch_seq=idx,
                 )
                 task_ids.append(task_id)
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
@@ -893,7 +904,7 @@ def download_playlist():
             if not tracks:
                 return jsonify({"error": "Could not retrieve playlist tracks. Spotify playlists may require authentication."}), 404
 
-            for t in tracks:
+            for idx, t in enumerate(tracks):
                 task_id = download_manager.add_track(
                     url=t.get("url", ""),
                     isrc=t.get("isrc", ""),
@@ -907,6 +918,8 @@ def download_playlist():
                     disc_number=1,
                     total_discs=1,
                     year=str(t.get("year", ""))[:4],
+                    batch_id=playlist_batch_id,
+                    batch_seq=idx,
                 )
                 task_ids.append(task_id)
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
