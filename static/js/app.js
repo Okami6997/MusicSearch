@@ -1412,6 +1412,7 @@
             case "resolving": return "Resolving...";
             case "downloading": return t.error ? `⚠ ${t.error}` : `Downloading ${Math.round(t.progress)}%`;
             case "converting": return "Converting...";
+            case "resampling": return "Resampling to Hi-Res...";
             case "embedding": return "Embedding metadata & lyrics...";
             case "completed": return `✓ Completed${t.source ? ' via ' + t.source : ''}`;
             case "failed": return `✕ Failed: ${t.error}`;
@@ -1451,6 +1452,7 @@
             $("#setting-source").value = s.preferred_source || "tidal";
             $("#setting-quality").value = s.quality || "LOSSLESS";
             $("#setting-lyrics").checked = s.embed_lyrics !== false;
+            $("#setting-resample").checked = s.auto_resample !== false;
         } catch (e) { /* ignore */ }
         settingsModal.classList.remove("hidden");
     });
@@ -1467,6 +1469,7 @@
                     preferred_source: $("#setting-source").value,
                     quality: $("#setting-quality").value,
                     embed_lyrics: $("#setting-lyrics").checked,
+                    auto_resample: $("#setting-resample").checked,
                 }),
             });
             toast("Settings saved", "success");

@@ -33,6 +33,7 @@ class DownloadStatus(str, Enum):
     RESOLVING = "resolving"
     DOWNLOADING = "downloading"
     CONVERTING = "converting"
+    RESAMPLING = "resampling"
     EMBEDDING = "embedding"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -97,6 +98,7 @@ class DownloadManager:
         self.quality: str = "LOSSLESS"
         self.embed_lyrics_flag: bool = True
         self.validate_duration: bool = True
+        self.auto_resample: bool = True
         # Performance: cache SongLink resolutions and ISRC lookups
         self._sl_cache: dict[str, dict] = {}
         self._isrc_cache: dict[str, dict] = {}
@@ -305,15 +307,20 @@ class DownloadManager:
 
             filepath = self._download(task, links, isrc, progress_cb)
 
+            # Auto-resample to 192kHz/24-bit if enabled
+            if self.auto_resample:
+                task.status = DownloadStatus.RESAMPLING
+                self._notify(task)
+                from .resample import resample_inplace
+                filepath = resample_inplace(filepath)
+
             task.status = DownloadStatus.EMBEDDING
             task.progress = 100
             self._notify(task)
 
             self._embed(filepath, task, isrc)
 
-            task.status = DownloadStatus.COMPLETED
             task.output_path = filepath
-            self._notify(task)
 
             # Save to history
             fmt = "MP3" if filepath.endswith(".mp3") else "FLAC"

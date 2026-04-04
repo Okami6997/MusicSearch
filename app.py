@@ -44,6 +44,7 @@ settings = {
     "preferred_source": "tidal",
     "quality": "LOSSLESS",
     "embed_lyrics": True,
+    "auto_resample": True,
 }
 scheduler_jobs: dict[str, dict] = {}
 scheduler_lock = Lock()
@@ -60,6 +61,7 @@ def _init_download_manager():
     download_manager.preferred_source = settings["preferred_source"]
     download_manager.quality = settings["quality"]
     download_manager.embed_lyrics_flag = settings["embed_lyrics"]
+    download_manager.auto_resample = settings["auto_resample"]
 
 
 def _on_progress(task_data: dict):
@@ -1215,6 +1217,9 @@ def update_settings():
     if "embed_lyrics" in body:
         settings["embed_lyrics"] = bool(body["embed_lyrics"])
         download_manager.embed_lyrics_flag = bool(body["embed_lyrics"])
+    if "auto_resample" in body:
+        settings["auto_resample"] = bool(body["auto_resample"])
+        download_manager.auto_resample = bool(body["auto_resample"])
     return jsonify(settings)
 
 

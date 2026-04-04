@@ -50,6 +50,54 @@ def _probe_audio(path: str) -> tuple[int, int]:
         return 0, 0
 
 
+def resample_inplace(path: str, sample_rate: str = "192000",
+                     bit_depth: str = "24") -> str:
+    """Resample a single audio file in-place to the target format.
+
+    Returns the (possibly new) file path — the extension may change to .flac
+    if the input was MP3/M4A.
+    """
+    sr, bits = _probe_audio(path)
+    target_sr = int(sample_rate) if sample_rate else 0
+    target_bits = int(bit_depth) if bit_depth else 0
+    if target_sr and sr == target_sr and target_bits and bits == target_bits:
+        # Already at target — nothing to do
+        return path
+
+    base, ext = os.path.splitext(path)
+    out_path = base + ".flac" if ext.lower() != ".flac" else path
+    tmp_path = out_path + ".remux.tmp"
+
+    args = ["ffmpeg", "-i", path, "-y"]
+    if bit_depth == "16":
+        args += ["-c:a", "flac", "-sample_fmt", "s16"]
+    elif bit_depth == "24":
+        args += ["-c:a", "flac", "-sample_fmt", "s32",
+                 "-bits_per_raw_sample", "24"]
+    else:
+        args += ["-c:a", "flac"]
+    if sample_rate:
+        args += ["-ar", sample_rate]
+    args += ["-map_metadata", "0", tmp_path]
+
+    r = subprocess.run(args, capture_output=True, timeout=600)
+    if r.returncode != 0:
+        # Clean up temp file on failure
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise RuntimeError(
+            f"ffmpeg resample failed: {r.stderr.decode()[-500:]}")
+
+    # Atomic replace
+    os.replace(tmp_path, out_path)
+
+    # If input was non-FLAC and output is a different path, remove original
+    if out_path != path and os.path.exists(path):
+        os.remove(path)
+
+    return out_path
+
+
 def resample_audio(input_files: list[str], sample_rate: str = "",
                    bit_depth: str = "", delete_original: bool = False) -> list[dict]:
     """Resample audio files to the specified sample rate and/or bit depth.
