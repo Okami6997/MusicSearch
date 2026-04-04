@@ -8,4 +8,8 @@ services:
       - ./music:/music
     environment:
       - SONGSFETCH_OUTPUT_DIR=/music
+      - EVENTLET_NO_GREENDNS=yes
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     restart: unless-stopped
