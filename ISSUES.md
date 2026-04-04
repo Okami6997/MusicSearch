@@ -25,6 +25,8 @@
 - [x] Improve search performance — Search now runs all services (Qobuz, YouTube, iTunes) concurrently via ThreadPoolExecutor + as_completed, emitting partial results via SocketIO as each service finishes. Fastest results appear in the UI first.
 - [x] Add support for search and downloading from additional music streaming services (e.g., Deezer, SoundCloud) — Added Deezer and SoundCloud search integrations and UI sections; added Deezer/SoundCloud URL parsing + cross-platform SongLink resolution so Deezer/SoundCloud links can be downloaded via available mapped sources.
 - [x] Add filters/toggles in Search UI for result sections — Added inline filter pills for Tracks, Artists, Albums, YouTube, Deezer, and SoundCloud with live re-rendering for both full and incremental search results.
+- [x] Embed lyrics and metadata into downloaded music files using a library like mutagen — Lyrics are now embedded directly into audio files using ID3 USLT frames (MP3), ©lyr atoms (M4A), and LYRICS tags (FLAC) for full Subsonic API/Navidrome compatibility.
+- [x] Prevent preview-clip downloads and improve fallback reliability — Added in-loop duration validation with source retry, improved UI retry messaging, removed dead Apple Music download-source path, and switched YouTube primary fallback to yt-dlp with ytsearch + node runtime support. (GitHub: #25)
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads

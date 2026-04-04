@@ -213,6 +213,94 @@ class YouTubeDownloader:
 
     # ── Download APIs ────────────────────────────────────────────
 
+    def _download_with_ytdlp(self, video_id: str, output_path: str,
+                              progress_cb=None) -> str:
+        """Download audio via yt-dlp (primary engine). Returns output_path."""
+        import subprocess, shutil
+
+        if not shutil.which("yt-dlp"):
+            raise ValueError("yt-dlp not found in PATH")
+
+        url = f"https://music.youtube.com/watch?v={video_id}"
+        tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
+        cmd = [
+            "yt-dlp",
+            "--no-playlist",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "--output", tmp_template,
+            "--no-progress",
+            "--quiet",
+        ]
+        # Pass node runtime if available so yt-dlp can solve JS challenges
+        node_path = shutil.which("node")
+        if node_path:
+            cmd += ["--js-runtimes", f"node:{node_path}"]
+        cmd.append(url)
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=300
+            )
+            if result.returncode != 0:
+                raise ValueError(f"yt-dlp exited {result.returncode}: {result.stderr.strip()}")
+            if os.path.exists(output_path):
+                return output_path
+            base = os.path.splitext(output_path)[0]
+            for ext in (".mp3", ".m4a", ".opus", ".webm"):
+                candidate = base + ext
+                if os.path.exists(candidate):
+                    if candidate != output_path:
+                        os.rename(candidate, output_path)
+                    return output_path
+            raise ValueError("yt-dlp finished but output file not found")
+        except subprocess.TimeoutExpired:
+            raise ValueError("yt-dlp timed out")
+
+    def _download_with_ytdlp_search(self, track_name: str, artist_name: str,
+                                     output_path: str, progress_cb=None) -> str:
+        """Use yt-dlp ytsearch to find and download a track by text. Returns output_path."""
+        import subprocess, shutil
+
+        if not shutil.which("yt-dlp"):
+            raise ValueError("yt-dlp not found in PATH")
+
+        query = f"{track_name} {artist_name} audio"
+        tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
+        cmd = [
+            "yt-dlp",
+            "--no-playlist",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "--output", tmp_template,
+            "--no-progress",
+            "--quiet",
+            f"ytsearch1:{query}",
+        ]
+        node_path = shutil.which("node")
+        if node_path:
+            cmd.insert(-1, "--js-runtimes")
+            cmd.insert(-1, f"node:{node_path}")
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=300
+            )
+            if result.returncode != 0:
+                raise ValueError(f"yt-dlp search exited {result.returncode}: {result.stderr.strip()}")
+            if os.path.exists(output_path):
+                return output_path
+            base = os.path.splitext(output_path)[0]
+            for ext in (".mp3", ".m4a", ".opus", ".webm"):
+                candidate = base + ext
+                if os.path.exists(candidate):
+                    if candidate != output_path:
+                        os.rename(candidate, output_path)
+                    return output_path
+            raise ValueError("yt-dlp search finished but output file not found")
+        except subprocess.TimeoutExpired:
+            raise ValueError("yt-dlp search timed out")
+
     def _request_spotube_dl(self, video_id: str) -> str:
         """Try SpotubeDL proxy engines for an MP3 download URL."""
         for engine in ("v1", "v3", "v2"):
@@ -261,34 +349,14 @@ class YouTubeDownloader:
             pass
         return ""
 
-    def _get_download_url(self, video_id: str) -> str:
-        """Try all proxy APIs and return the first working download URL."""
-        url = self._request_spotube_dl(video_id)
-        if url:
-            return url
-        url = self._request_cobalt(video_id)
-        if url:
-            return url
-        raise ValueError("All YouTube download APIs failed")
-
-    # ── Public interface ─────────────────────────────────────────
-
-    def download_track(self, youtube_url: str, output_dir: str,
-                       filename: str = "", progress_cb=None) -> str:
-        """Download a track from a YouTube Music URL.
-
-        Returns the path to the downloaded MP3 file.
-        """
-        video_id = self.extract_video_id(youtube_url)
-        dl_url = self._get_download_url(video_id)
-
-        if not filename:
-            filename = f"{video_id}.mp3"
-        if not filename.endswith(".mp3"):
-            filename = os.path.splitext(filename)[0] + ".mp3"
-
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, filename)
+    def _download_via_proxy(self, video_id: str, output_path: str,
+                            progress_cb=None) -> str:
+        """Download via SpotubeDL/Cobalt proxy APIs. Returns output_path."""
+        dl_url = self._request_spotube_dl(video_id)
+        if not dl_url:
+            dl_url = self._request_cobalt(video_id)
+        if not dl_url:
+            raise ValueError("All YouTube proxy APIs failed")
 
         resp = self.session.get(dl_url, stream=True, timeout=120)
         resp.raise_for_status()
@@ -301,19 +369,72 @@ class YouTubeDownloader:
                     done += len(chunk)
                     if progress_cb and total:
                         progress_cb(done, total)
-
         return output_path
+
+    # ── Public interface ─────────────────────────────────────────
+
+    def download_track(self, youtube_url: str, output_dir: str,
+                       filename: str = "", progress_cb=None) -> str:
+        """Download a track from a YouTube Music URL.
+
+        Tries yt-dlp first (reliable, maintained), falls back to
+        SpotubeDL/Cobalt proxy APIs. Returns the path to the MP3 file.
+        """
+        video_id = self.extract_video_id(youtube_url)
+
+        if not filename:
+            filename = f"{video_id}.mp3"
+        if not filename.endswith(".mp3"):
+            filename = os.path.splitext(filename)[0] + ".mp3"
+
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, filename)
+
+        errors = []
+        try:
+            return self._download_with_ytdlp(video_id, output_path, progress_cb)
+        except Exception as e:
+            errors.append(f"yt-dlp: {e}")
+
+        try:
+            return self._download_via_proxy(video_id, output_path, progress_cb)
+        except Exception as e:
+            errors.append(f"proxy: {e}")
+
+        raise ValueError("YouTube download failed: " + "; ".join(errors))
 
     def search_and_download(self, track_name: str, artist_name: str,
                             output_dir: str, filename: str = "",
                             progress_cb=None) -> str:
         """Search YouTube for a track by name+artist and download it.
 
-        Useful when no YouTube URL is available from SongLink.
+        Tries yt-dlp ytsearch first (no URL needed), falls back to
+        HTML scrape + download_track.
         """
-        yt_url = self.search_video(track_name, artist_name)
-        if not yt_url:
-            raise ValueError(
-                f"YouTube search found no results for '{track_name}' by '{artist_name}'"
-            )
-        return self.download_track(yt_url, output_dir, filename, progress_cb)
+        if not filename:
+            filename = f"{track_name}.mp3"
+        if not filename.endswith(".mp3"):
+            filename = os.path.splitext(filename)[0] + ".mp3"
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, filename)
+
+        errors = []
+        try:
+            return self._download_with_ytdlp_search(
+                track_name, artist_name, output_path, progress_cb)
+        except Exception as e:
+            errors.append(f"yt-dlp search: {e}")
+
+        # Fallback: HTML scrape for URL then download
+        try:
+            yt_url = self.search_video(track_name, artist_name)
+            if not yt_url:
+                raise ValueError("No results from HTML search")
+            return self.download_track(yt_url, output_dir, filename, progress_cb)
+        except Exception as e:
+            errors.append(f"html search: {e}")
+
+        raise ValueError(
+            f"YouTube search failed for '{track_name}' by '{artist_name}': "
+            + "; ".join(errors)
+        )

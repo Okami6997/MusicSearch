@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import requests
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import (ID3, APIC, TIT2, TPE1, TALB, TPE2, TDRC,
-                          TRCK, TPOS, TCOP, TPUB, TSRC, TCON)
+                          TRCK, TPOS, TCOP, TPUB, TSRC, TCON, USLT)
 from mutagen.mp4 import MP4, MP4Cover
 
 
@@ -108,6 +108,8 @@ def _embed_mp3(fp: str, m: Metadata, cover: str) -> None:
         a.add(TSRC(encoding=3, text=m.isrc))
     if m.genre:
         a.add(TCON(encoding=3, text=m.genre))
+    if m.lyrics:
+        a.add(USLT(encoding=3, lang="eng", desc="", text=m.lyrics))
     if cover and os.path.exists(cover):
         with open(cover, "rb") as f:
             a.add(APIC(encoding=3, mime="image/jpeg", type=3,
@@ -136,6 +138,8 @@ def _embed_m4a(fp: str, m: Metadata, cover: str) -> None:
         t["\xa9gen"] = [m.genre]
     if m.copyright:
         t["cprt"] = [m.copyright]
+    if m.lyrics:
+        t["\xa9lyr"] = [m.lyrics]
     if cover and os.path.exists(cover):
         with open(cover, "rb") as f:
             t["covr"] = [MP4Cover(f.read(), imageformat=MP4Cover.FORMAT_JPEG)]

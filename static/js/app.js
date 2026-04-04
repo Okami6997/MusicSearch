@@ -1404,9 +1404,9 @@
         switch (t.status) {
             case "queued": return "Queued";
             case "resolving": return "Resolving...";
-            case "downloading": return `Downloading ${Math.round(t.progress)}%`;
+            case "downloading": return t.error ? `⚠ ${t.error}` : `Downloading ${Math.round(t.progress)}%`;
             case "converting": return "Converting...";
-            case "embedding": return "Embedding metadata...";
+            case "embedding": return "Embedding metadata & lyrics...";
             case "completed": return `✓ Completed${t.source ? ' via ' + t.source : ''}`;
             case "failed": return `✕ Failed: ${t.error}`;
             default: return t.status;

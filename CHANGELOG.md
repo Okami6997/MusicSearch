@@ -30,6 +30,7 @@ This release adds playlist downloading (Spotify), significant download performan
 
 ### Bug Fixes
 
+- **Metadata: Lyrics now properly embedded in all audio formats** — Fixed issue where lyrics were not being embedded into MP3 and M4A files. Lyrics are now embedded using ID3 USLT (Unsynchronized Lyrics) frames for MP3 and ©lyr atoms for M4A/MP4. This ensures Subsonic API servers (Navidrome, etc.) can read lyrics directly from the audio files instead of requiring separate .lrc companion files. FLAC lyrics embedding already worked correctly.
 - **Download: Double JSON parse on Deezer response** — The ISRC→Deezer lookup was calling `dr.json()` twice (once for the `id` check, once for the `link`), which could fail on some response types. Now parses JSON once into `deezer_data` and reuses it.
 - **Download: Dead Spotify ISRC search removed** — Removed a stub that called Spotify's `/v1/search` API without authentication (always 401), did nothing with the response, and wasted up to 10 seconds on timeout.
 - **Download: SongLink failure crashes Deezer resolution** — If the SongLink call failed after a successful Deezer ISRC lookup, the entire Deezer block would fail and no cross-platform URLs would be set. SongLink is now wrapped in its own inner try/except so the Deezer URL is preserved even if SongLink is down.
@@ -48,6 +49,7 @@ This release adds playlist downloading (Spotify), significant download performan
 - `app.py` — Added `/api/download/playlist` endpoint for Apple Music and Spotify playlists; added `applemusic` client to `DownloadManager`; increased `_max_workers` to 5
 - `backend/applemusic.py` — New file: Apple Music / iTunes downloader with `expand_album()`, `expand_playlist()`, `get_track_stream_url()`, and `parse_apple_music_url()` methods
 - `backend/spotify.py` — Added `expand_playlist()` method using Spotify embed API to extract playlist track metadata
+- `backend/metadata.py` — Added USLT frame embedding for MP3 files and ©lyr atom embedding for M4A/MP4 files to store unsynchronized lyrics; imported USLT from mutagen.id3 for proper ID3v2 lyrics support
 - `backend/downloader.py` — Added `AppleMusicDownloader` integration; added SongLink and ISRC in-memory caches with 5-min TTL; increased worker pool from 3 to 5 concurrent workers; added `apple_url` to links dict and source priority order
 - `backend/songlink.py` — Updated `MUSIC_URL_PATTERNS` to include `/song/` in Apple Music regex and `"song"` type in `parse_music_url()`; `get_all_urls()` now returns `apple_url` from SongLink response
 - `backend/__init__.py` — Re-exported `AppleMusicDownloader`

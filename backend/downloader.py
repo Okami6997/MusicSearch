@@ -207,7 +207,6 @@ class DownloadManager:
                     links.setdefault("deezer_url", sl.get("deezer_url", ""))
                     links.setdefault("youtube_url", sl.get("youtube_url", ""))
                     links.setdefault("spotify_url", sl.get("spotify_url", ""))
-                    links.setdefault("apple_url", sl.get("apple_url", ""))
                     links.setdefault("soundcloud_url", sl.get("soundcloud_url", ""))
                     if not isrc:
                         isrc = sl.get("isrc", "")
@@ -272,7 +271,9 @@ class DownloadManager:
                         task.artist = task.artist or qres.get("artist", "")
                         task.album = task.album or qres.get("album", "")
 
-            # Resolve Apple Music URL via our own client to get track details
+            # Resolve Apple Music URL for metadata only (title/artist/ISRC).
+            # Apple Music is not a download source — metadata is used so
+            # Tidal/Qobuz/etc. can download the actual full track.
             if apple_music_url:
                 try:
                     tracks = self.applemusic.expand_album(apple_music_url)
@@ -286,8 +287,6 @@ class DownloadManager:
                         task.disc_number = task.disc_number or t.get("disc_number", 1)
                         if not isrc:
                             isrc = t.get("isrc", "")
-                    if tracks and not links.get("apple_url"):
-                        links["apple_url"] = apple_music_url
                 except Exception:
                     pass
 
@@ -305,13 +304,6 @@ class DownloadManager:
                 self._notify(task)
 
             filepath = self._download(task, links, isrc, progress_cb)
-
-            # Validate duration if enabled
-            if self.validate_duration and task.duration_ms > 0:
-                expected_sec = task.duration_ms // 1000
-                valid, err_msg = validate_download_duration(filepath, expected_sec)
-                if not valid:
-                    print(f"[Validation] Warning: {err_msg}")
 
             task.status = DownloadStatus.EMBEDDING
             task.progress = 100
@@ -359,10 +351,25 @@ class DownloadManager:
 
         sources = self._ordered_sources(links, isrc, task)
         errors = []
+        expected_sec = (task.duration_ms // 1000) if task.duration_ms > 0 else 0
 
         for name, fn in sources:
             try:
                 path = fn(album_dir, filename, progress_cb)
+                # Validate duration to reject preview/sample clips before accepting
+                if self.validate_duration and expected_sec > 0:
+                    valid, err_msg = validate_download_duration(path, expected_sec)
+                    if not valid:
+                        print(f"[Validation] {name}: {err_msg} — skipping, trying next source")
+                        task.error = f"Preview from {name}, retrying…"
+                        self._notify(task)
+                        task.error = ""
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
+                        errors.append(f"{name}: {err_msg}")
+                        continue
                 task.source = name
                 return path
             except Exception as e:
@@ -379,7 +386,6 @@ class DownloadManager:
         spotify_url = links.get("spotify_url", "")
         deezer_url = links.get("deezer_url", "")
         soundcloud_url = links.get("soundcloud_url", "")
-        apple_url = links.get("apple_url", "")
 
         def tidal_fn(d, f, cb):
             if not tidal_url:

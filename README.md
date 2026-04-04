@@ -12,9 +12,9 @@ A web-based music search and download application. Search or paste any music pla
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
 - **Qobuz/Deezer Resolver Fallbacks** — Download resolvers use multiple provider endpoints with quality fallback for more resilient FLAC retrieval when a single upstream API is unavailable
 - **Lossless Audio** — FLAC (16-bit and 24-bit Hi-Res) from Tidal/Qobuz/Amazon; MP3 320kbps fallback from YouTube
-- **Rich Metadata Embedding** — Title, artist, album, album artist, track number, disc number, total tracks, year, genre (MusicBrainz), label, ISRC, and cover art
-- **Lyrics** — Synced (LRC) and plain lyrics from LRCLIB, embedded into files
-- **Navidrome/Lidarr Compatible** — Full metadata embedding ensures downloaded tracks are recognized by media servers
+- **Rich Metadata Embedding** — Title, artist, album, album artist, track number, disc number, total tracks, year, genre (MusicBrainz), label, ISRC, and cover art (FLAC, MP3, M4A)
+- **Lyrics** — Synced and plain lyrics from LRCLIB, embedded directly into audio files (USLT frames in MP3, ©lyr atoms in M4A, LYRICS tags in FLAC) for full Subsonic API/Navidrome compatibility
+- **Navidrome/Lidarr Compatible** — Full metadata and lyrics embedding ensures downloaded tracks are recognized by media servers without requiring companion files
 - **Audio Analysis** — Analyze audio files for codec, sample rate, bit depth, duration, and bitrate (FFprobe)
 - **Audio Resampling** — Change sample rate and bit depth of audio files (FFmpeg), with batch processing
 - **File Manager** — Browse audio files, view metadata, and batch rename using format templates
