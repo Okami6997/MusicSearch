@@ -66,7 +66,8 @@ def resample_inplace(path: str, sample_rate: str = "192000",
 
     base, ext = os.path.splitext(path)
     out_path = base + ".flac" if ext.lower() != ".flac" else path
-    tmp_path = out_path + ".remux.tmp"
+    # Keep a .flac suffix so ffmpeg can infer muxer from filename.
+    tmp_path = out_path + ".remux.tmp.flac"
 
     args = ["ffmpeg", "-i", path, "-y"]
     if bit_depth == "16":
@@ -78,7 +79,8 @@ def resample_inplace(path: str, sample_rate: str = "192000",
         args += ["-c:a", "flac"]
     if sample_rate:
         args += ["-ar", sample_rate]
-    args += ["-map_metadata", "0", tmp_path]
+    # Force FLAC output format explicitly for additional safety.
+    args += ["-map_metadata", "0", "-f", "flac", tmp_path]
 
     r = subprocess.run(args, capture_output=True, timeout=600)
     if r.returncode != 0:
