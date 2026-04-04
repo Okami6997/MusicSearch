@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.3.0 (Unreleased)
+
+This release adds parallel album/playlist downloads with in-order UI completion, auto-resample to Hi-Res FLAC after every download, 30s DRM-free preview playback in search results, and a Docker DNS fix for search latency.
+
+### New Features
+
+- **Download: Auto-resample to 192kHz/24-bit Hi-Res FLAC** — After every successful download a new `resample_inplace()` step runs before metadata embedding. Non-FLAC files (MP3, M4A) are converted to FLAC and the originals removed. Files already at the target spec are skipped. Controlled via the new "Auto-resample to 192kHz/24-bit" toggle in Settings.
+- **Download: Parallel album/playlist download with ordered UI completion** — Album and playlist tracks now download concurrently across all 5 workers. Each batch receives a `batch_id`; the `_flush_batch_completion()` helper buffers finished tasks and emits UI notifications strictly in track order, so the queue display always shows tracks completing in sequence.
+- **Search: 30s DRM-free preview playback** — Search results that include a preview URL (Deezer tracks use the `preview` field; iTunes tracks use `previewUrl`) now show a circular play/pause button. A single shared `<audio>` element handles playback — starting a new preview automatically stops the previous one.
+
+### Bug Fixes
+
+- **Docker: Search slowness from eventlet green DNS** — Eventlet's green DNS resolver introduced high latency across concurrent search API calls inside Docker due to the container's embedded DNS server. Fixed by setting `EVENTLET_NO_GREENDNS=yes` in both `Dockerfile` and `docker-compose.yml`, and adding external DNS servers (`8.8.8.8`, `8.8.4.4`) to `docker-compose.yml`.
+
+### Files Changed
+
+- `backend/downloader.py` — Added `RESAMPLING` status; `auto_resample` flag; calls `resample_inplace()` between download and embedding; added `batch_id`/`batch_seq` fields and `_flush_batch_completion()` to buffer out-of-order completions
+- `backend/resample.py` — Added `resample_inplace()` function for single-file in-place resample/conversion
+- `backend/deezer.py` — Exposed `preview_url` field from Deezer API response
+- `static/js/app.js` — Added `previewBtn()` helper and `sfTogglePreview()` play/pause handler; added `resampling` status label; wired `auto_resample` setting to UI toggle
+- `static/css/style.css` — Added `.btn-preview` and `.btn-preview.playing` styles
+- `templates/index.html` — Added `<audio id="preview-player">` element; added Auto-resample checkbox in Settings
+- `Dockerfile` — Added `EVENTLET_NO_GREENDNS=yes` environment variable
+- `docker-compose.yml` — Added `EVENTLET_NO_GREENDNS=yes` env var and external DNS servers
+- `app.py` — Passes `batch_id` and `batch_seq` for all batch/album/playlist download endpoints
+
+---
+
 ## v1.2.0 (Unreleased)
 
 This release adds playlist downloading (Spotify), significant download performance improvements through caching and increased parallelism, and smart resample skip logic.

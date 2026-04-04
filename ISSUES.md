@@ -27,6 +27,10 @@
 - [x] Add filters/toggles in Search UI for result sections — Added inline filter pills for Tracks, Artists, Albums, YouTube, Deezer, and SoundCloud with live re-rendering for both full and incremental search results.
 - [x] Embed lyrics and metadata into downloaded music files using a library like mutagen — Lyrics are now embedded directly into audio files using ID3 USLT frames (MP3), ©lyr atoms (M4A), and LYRICS tags (FLAC) for full Subsonic API/Navidrome compatibility.
 - [x] Prevent preview-clip downloads and improve fallback reliability — Added in-loop duration validation with source retry, improved UI retry messaging, removed dead Apple Music download-source path, and switched YouTube primary fallback to yt-dlp with ytsearch + node runtime support. (GitHub: #25)
+- [x] Auto-resample all downloads to 192kHz/24-bit Hi-Res FLAC — Added `resample_inplace()` step between download and metadata embedding; non-FLAC inputs are converted, files already at spec are skipped; toggle in Settings.
+- [x] Parallel album/playlist download with in-order UI completion — Album/playlist tracks download across all 5 workers concurrently; a batch-ordered flush mechanism ensures the queue display always shows completions in track order.
+- [x] 30s DRM-free preview playback in search results — Play buttons on Deezer and iTunes tracks; shared audio element with auto-stop on new selection.
+- [x] Fix Docker search slowness from eventlet green DNS — Added `EVENTLET_NO_GREENDNS=yes` to Dockerfile and docker-compose; external DNS servers added to docker-compose.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads
