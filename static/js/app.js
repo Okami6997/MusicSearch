@@ -335,6 +335,7 @@
                 </div>
                 <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                 <div class="track-actions">
+                    ${previewBtn(t.preview_url)}
                     <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
                 </div>
             </div>
@@ -357,6 +358,7 @@
                 </div>
                 <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                 <div class="track-actions">
+                    ${previewBtn(t.preview_url)}
                     <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
                 </div>
             </div>
@@ -376,6 +378,7 @@
                 </div>
                 <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                 <div class="track-actions">
+                    ${previewBtn(t.preview_url)}
                     <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'${escJs(t.year || '')}')">Download</button>
                 </div>
             </div>
@@ -482,6 +485,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
+                        ${previewBtn(t.preview_url)}
                         <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
                     </div>
                 </div>
@@ -504,6 +508,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
+                        ${previewBtn(t.preview_url)}
                         <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
                     </div>
                 </div>
@@ -541,6 +546,7 @@
                     </div>
                     <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
                     <div class="track-actions">
+                        ${previewBtn(t.preview_url)}
                         <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
                     </div>
                 </div>
@@ -1549,6 +1555,45 @@
         el.textContent = msg;
         $("#toast-container").appendChild(el);
         setTimeout(() => el.remove(), 4000);
+    }
+
+    // ── Preview Player ────────────────────────────────────────
+    let _currentPreviewBtn = null;
+    window.sfTogglePreview = function (url, btn) {
+        const player = document.getElementById("preview-player");
+        if (!url || !player) return;
+
+        // If same track is playing, pause it
+        if (_currentPreviewBtn === btn && !player.paused) {
+            player.pause();
+            btn.classList.remove("playing");
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+            _currentPreviewBtn = null;
+            return;
+        }
+
+        // Stop previous
+        if (_currentPreviewBtn) {
+            _currentPreviewBtn.classList.remove("playing");
+            _currentPreviewBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+        }
+
+        player.src = url;
+        player.play();
+        btn.classList.add("playing");
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+        _currentPreviewBtn = btn;
+
+        player.onended = () => {
+            btn.classList.remove("playing");
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+            _currentPreviewBtn = null;
+        };
+    };
+
+    function previewBtn(previewUrl) {
+        if (!previewUrl) return "";
+        return `<button class="btn-preview" onclick="window.sfTogglePreview('${escJs(previewUrl)}', this)" title="Preview"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
     }
 
     // Init

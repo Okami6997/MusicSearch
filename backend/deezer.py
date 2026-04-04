@@ -54,6 +54,7 @@ class DeezerClient:
                 "hires": False,
                 "bit_depth": 0,
                 "sample_rate": 0,
+                "preview_url": t.get("preview", ""),
                 "source": "deezer",
                 "service": "Deezer",
                 "year": "",

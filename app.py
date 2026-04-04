@@ -160,6 +160,7 @@ def _youtube_search(q: str, limit: int = 10) -> list[dict]:
                 "bit_depth": 0,
                 "sample_rate": 0,
                 "url": r.get("url", ""),
+                "preview_url": "",
                 "source": "youtube",
                 "service": "YouTube Music",
             })
@@ -263,6 +264,7 @@ def search():
                     "total_tracks": t.get("album", {}).get("tracks_count", 0),
                     "disc_number": t.get("media_number", 0) or 1,
                     "year": (album_data.get("release_date_original") or "")[:4],
+                    "preview_url": "",
                     "source": "qobuz", "service": "Qobuz",
                 })
             return out
@@ -328,6 +330,7 @@ def search():
                     "url": t.get("trackViewUrl", ""), "isrc": "",
                     "hires": False, "bit_depth": 0, "sample_rate": 0,
                     "year": (t.get("releaseDate") or "")[:4],
+                    "preview_url": t.get("previewUrl", ""),
                     "source": "itunes", "service": "Apple Music",
                 })
             return out

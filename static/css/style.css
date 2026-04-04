@@ -151,6 +151,15 @@ input, select { font: inherit; color: inherit; }
 }
 .btn-dl:hover { opacity: 0.85; }
 .btn-dl:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-preview {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text-muted); transition: all var(--transition);
+    cursor: pointer; flex-shrink: 0;
+}
+.btn-preview:hover { color: var(--primary); border-color: var(--primary); }
+.btn-preview.playing { color: var(--primary); border-color: var(--primary); background: rgba(34, 197, 94, 0.1); }
 
 /* Cards Grid */
 .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
