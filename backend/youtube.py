@@ -97,6 +97,9 @@ class YouTubeDownloader:
                     break
 
             if out:
+                # If top hits are sparse, also expand playlist hits from YT Music search.
+                if len(out) < max(8, limit // 2):
+                    out = self._merge_unique_tracks(out, self._playlist_tracks_from_search(query, limit), limit)
                 return out
         except Exception as e:
             print(f"[YouTube Music] yt_dlp search error: {e}")
@@ -249,7 +252,88 @@ class YouTubeDownloader:
                         "url": f"https://music.youtube.com/watch?v={vid}",
                     })
 
+        if len(results) < max(8, limit // 2):
+            results = self._merge_unique_tracks(results, self._playlist_tracks_from_search(query, limit), limit)
+
         return results
+
+    def _merge_unique_tracks(self, base: list[dict], extra: list[dict], limit: int) -> list[dict]:
+        out = list(base or [])
+        seen = set((t.get("id") or "") for t in out)
+        for t in (extra or []):
+            vid = t.get("id") or ""
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+            out.append(t)
+            if len(out) >= limit:
+                break
+        return out
+
+    def _playlist_tracks_from_search(self, query: str, limit: int) -> list[dict]:
+        """Expand top playlist hits from YouTube Music search into track-like entries."""
+        try:
+            from yt_dlp import YoutubeDL
+        except Exception:
+            return []
+
+        search_url = f"https://music.youtube.com/search?q={quote(query)}"
+        try:
+            resp = self.session.get(search_url, headers={"User-Agent": self.UA}, timeout=20)
+            resp.raise_for_status()
+            html = resp.text
+        except Exception:
+            return []
+
+        playlist_ids = []
+        seen_ids = set()
+        for m in re.finditer(r'"playlistId":"([A-Za-z0-9_-]{10,})"', html):
+            pid = m.group(1)
+            if pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+            playlist_ids.append(pid)
+            if len(playlist_ids) >= 3:
+                break
+
+        if not playlist_ids:
+            return []
+
+        out = []
+        for pid in playlist_ids:
+            remain = max(1, limit - len(out))
+            fetch_n = min(25, remain)
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "extract_flat": True,
+                "noplaylist": False,
+                "playlistend": fetch_n,
+            }
+            try:
+                with YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(f"https://music.youtube.com/playlist?list={pid}", download=False)
+                entries = (info or {}).get("entries", []) or []
+                for e in entries:
+                    vid = (e or {}).get("id", "")
+                    if not vid:
+                        continue
+                    out.append({
+                        "id": vid,
+                        "title": (e or {}).get("title", ""),
+                        "artist": (e or {}).get("uploader", "") or (e or {}).get("channel", ""),
+                        "album": (info or {}).get("title", ""),
+                        "cover_url": (e or {}).get("thumbnail", "") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                        "duration_ms": int(((e or {}).get("duration") or 0) * 1000),
+                        "url": f"https://music.youtube.com/watch?v={vid}",
+                    })
+                    if len(out) >= limit:
+                        return out
+            except Exception:
+                continue
+
+        return out
 
     # ── Download APIs ────────────────────────────────────────────
 
