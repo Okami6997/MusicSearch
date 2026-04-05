@@ -6,6 +6,7 @@ This release adds parallel album/playlist downloads with in-order UI completion,
 
 ### New Features
 
+- **Preview Playback: Server-side proxy for all services** — Added `/api/preview` endpoint that proxies audio preview URLs server-side to bypass CORS restrictions. This enables 30-second preview playback for Deezer, SoundCloud, YouTube, and all other services that provide preview audio, not just Apple Music. The proxy streams audio with proper headers (Accept-Ranges, CORS-friendly content-type) for browser compatibility.
 - **Download: Auto-resample to 192kHz/24-bit Hi-Res FLAC** — After every successful download a new `resample_inplace()` step runs before metadata embedding. Non-FLAC files (MP3, M4A) are converted to FLAC and the originals removed. Files already at the target spec are skipped. Controlled via the new "Auto-resample to 192kHz/24-bit" toggle in Settings.
 - **Download: Parallel album/playlist download with ordered UI completion** — Album and playlist tracks now download concurrently across all 5 workers. Each batch receives a `batch_id`; the `_flush_batch_completion()` helper buffers finished tasks and emits UI notifications strictly in track order, so the queue display always shows tracks completing in sequence.
 - **Search: 30s DRM-free preview playback** — Search results that include a preview URL (Deezer tracks use the `preview` field; iTunes tracks use `previewUrl`) now show a circular play/pause button. A single shared `<audio>` element handles playback — starting a new preview automatically stops the previous one.
@@ -21,12 +22,12 @@ This release adds parallel album/playlist downloads with in-order UI completion,
 - `backend/downloader.py` — Added `RESAMPLING` status; `auto_resample` flag; calls `resample_inplace()` between download and embedding; added `batch_id`/`batch_seq` fields and `_flush_batch_completion()` to buffer out-of-order completions
 - `backend/resample.py` — Added `resample_inplace()` function for single-file in-place resample/conversion
 - `backend/deezer.py` — Exposed `preview_url` field from Deezer API response
-- `static/js/app.js` — Added `previewBtn()` helper and `sfTogglePreview()` play/pause handler; added `resampling` status label; wired `auto_resample` setting to UI toggle
-- `static/css/style.css` — Added `.btn-preview` and `.btn-preview.playing` styles
+- `static/js/app.js` — Added `previewBtn()` helper and `sfTogglePreview()` play/pause handler; added `resampling` status label; wired `auto_resample` setting to UI toggle; updated `previewBtn()` to use `/api/preview` proxy for all services
+- `static/css/style.css` — Added `.btn-preview` and `.btn-preview.playing` and `.btn-preview.loading` styles
 - `templates/index.html` — Added `<audio id="preview-player">` element; added Auto-resample checkbox in Settings
 - `Dockerfile` — Added `EVENTLET_NO_GREENDNS=yes` environment variable
 - `docker-compose.yml` — Added `EVENTLET_NO_GREENDNS=yes` env var and external DNS servers
-- `app.py` — Passes `batch_id` and `batch_seq` for all batch/album/playlist download endpoints
+- `app.py` — Passes `batch_id` and `batch_seq` for all batch/album/playlist download endpoints; added `/api/preview` proxy endpoint for CORS-free audio streaming
 
 ---
 

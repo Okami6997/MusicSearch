@@ -211,6 +211,51 @@ def resolve_url():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/preview", methods=["GET"])
+def proxy_preview():
+    """Proxy audio preview URLs to bypass CORS restrictions.
+    
+    Accepts a URL parameter and streams the audio content with
+    appropriate headers to allow browser playback.
+    """
+    import requests as _requests
+    url = request.args.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "URL required"}), 400
+    
+    # Validate it's a media URL (preview URLs typically contain audio/video extensions or known CDN patterns)
+    valid_patterns = [
+        "preview", "mp3", "audio", "cdn", "scdn", "dzcdn",
+        "itunes", "apple", "spotify", "youtube", "video"
+    ]
+    if not any(p in url.lower() for p in valid_patterns):
+        return jsonify({"error": "Invalid preview URL"}), 400
+    
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "audio/*,*/*",
+            "Accept-Encoding": "identity",
+        }
+        resp = _requests.get(url, headers=headers, timeout=30, stream=True)
+        resp.raise_for_status()
+        
+        # Stream the response with appropriate headers
+        from flask import Response
+        return Response(
+            resp.iter_content(chunk_size=65536),
+            status=resp.status_code,
+            headers={
+                "Content-Type": resp.headers.get("Content-Type", "audio/mpeg"),
+                "Content-Length": resp.headers.get("Content-Length", ""),
+                "Accept-Ranges": "none",
+                "Cache-Control": "public, max-age=3600",
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"Failed to proxy preview: {str(e)}"}), 500
+
+
 @app.route("/api/search", methods=["GET"])
 def search():
     """Search for tracks by query or ISRC. Emits partial results via SocketIO as
@@ -242,75 +287,90 @@ def search():
         from backend.qobuz import QobuzDownloader
 
         def _do_qobuz_tracks():
-            qobuz_dl = QobuzDownloader()
-            r = qobuz_dl.session.get(
-                "https://www.qobuz.com/api.json/0.2/track/search",
-                params={"query": q, "limit": 20, "offset": offset, "app_id": qobuz_dl.APP_ID},
-                timeout=15,
-            )
-            r.raise_for_status()
-            out = []
-            for t in r.json().get("tracks", {}).get("items", []):
-                album_data = t.get("album", {})
-                out.append({
-                    "id": t.get("id"), "title": t.get("title", ""),
-                    "artist": t.get("performer", {}).get("name", ""),
-                    "album": album_data.get("title", ""),
-                    "cover_url": album_data.get("image", {}).get("large", ""),
-                    "duration_ms": (t.get("duration", 0) or 0) * 1000,
-                    "isrc": t.get("isrc", ""),
-                    "hires": t.get("hires_streamable", False),
-                    "bit_depth": t.get("maximum_bit_depth", 0),
-                    "sample_rate": t.get("maximum_sampling_rate", 0),
-                    "track_number": t.get("track_number", 0),
-                    "total_tracks": t.get("album", {}).get("tracks_count", 0),
-                    "disc_number": t.get("media_number", 0) or 1,
-                    "year": (album_data.get("release_date_original") or "")[:4],
-                    "preview_url": "",
-                    "source": "qobuz", "service": "Qobuz",
-                })
-            return out
+            try:
+                qobuz_dl = QobuzDownloader()
+                r = qobuz_dl.session.get(
+                    "https://www.qobuz.com/api.json/0.2/track/search",
+                    params={"query": q, "limit": 20, "offset": offset, "app_id": qobuz_dl.APP_ID},
+                    timeout=15,
+                )
+                r.raise_for_status()
+                out = []
+                for t in r.json().get("tracks", {}).get("items", []):
+                    album_data = t.get("album", {})
+                    out.append({
+                        "id": t.get("id"), "title": t.get("title", ""),
+                        "artist": t.get("performer", {}).get("name", ""),
+                        "album": album_data.get("title", ""),
+                        "cover_url": album_data.get("image", {}).get("large", ""),
+                        "duration_ms": (t.get("duration", 0) or 0) * 1000,
+                        "isrc": t.get("isrc", ""),
+                        "hires": t.get("hires_streamable", False),
+                        "bit_depth": t.get("maximum_bit_depth", 0),
+                        "sample_rate": t.get("maximum_sampling_rate", 0),
+                        "track_number": t.get("track_number", 0),
+                        "total_tracks": t.get("album", {}).get("tracks_count", 0),
+                        "disc_number": t.get("media_number", 0) or 1,
+                        "year": (album_data.get("release_date_original") or "")[:4],
+                        "preview_url": "",
+                        "source": "qobuz", "service": "Qobuz",
+                    })
+                return out
+            except Exception as e:
+                import logging
+                logging.getLogger("search").warning(f"qobuz_tracks failed: {e}")
+                return []
 
         def _do_qobuz_artists():
-            qobuz_dl = QobuzDownloader()
-            r = qobuz_dl.session.get(
-                "https://www.qobuz.com/api.json/0.2/artist/search",
-                params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
-                timeout=15,
-            )
-            r.raise_for_status()
-            out = []
-            for a in r.json().get("artists", {}).get("items", []):
-                img = a.get("image", {})
-                out.append({
-                    "id": a.get("id"), "name": a.get("name", ""),
-                    "image_url": img.get("large", "") or img.get("medium", "") or img.get("small", ""),
-                    "albums_count": a.get("albums_count", 0),
-                    "source": "qobuz", "service": "Qobuz",
-                })
-            return out
+            try:
+                qobuz_dl = QobuzDownloader()
+                r = qobuz_dl.session.get(
+                    "https://www.qobuz.com/api.json/0.2/artist/search",
+                    params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
+                    timeout=15,
+                )
+                r.raise_for_status()
+                out = []
+                for a in r.json().get("artists", {}).get("items", []):
+                    img = a.get("image", {})
+                    out.append({
+                        "id": a.get("id"), "name": a.get("name", ""),
+                        "image_url": img.get("large", "") or img.get("medium", "") or img.get("small", ""),
+                        "albums_count": a.get("albums_count", 0),
+                        "source": "qobuz", "service": "Qobuz",
+                    })
+                return out
+            except Exception as e:
+                import logging
+                logging.getLogger("search").warning(f"qobuz_artists failed: {e}")
+                return []
 
         def _do_qobuz_albums():
-            qobuz_dl = QobuzDownloader()
-            r = qobuz_dl.session.get(
-                "https://www.qobuz.com/api.json/0.2/album/search",
-                params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
-                timeout=15,
-            )
-            r.raise_for_status()
-            out = []
-            for al in r.json().get("albums", {}).get("items", []):
-                out.append({
-                    "id": al.get("id"), "title": al.get("title", ""),
-                    "artist": al.get("artist", {}).get("name", ""),
-                    "cover_url": al.get("image", {}).get("large", ""),
-                    "tracks_count": al.get("tracks_count", 0),
-                    "release_date": al.get("release_date_original", ""),
-                    "year": (al.get("release_date_original") or "")[:4],
-                    "hires": al.get("hires_streamable", False),
-                    "source": "qobuz", "service": "Qobuz",
-                })
-            return out
+            try:
+                qobuz_dl = QobuzDownloader()
+                r = qobuz_dl.session.get(
+                    "https://www.qobuz.com/api.json/0.2/album/search",
+                    params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
+                    timeout=15,
+                )
+                r.raise_for_status()
+                out = []
+                for al in r.json().get("albums", {}).get("items", []):
+                    out.append({
+                        "id": al.get("id"), "title": al.get("title", ""),
+                        "artist": al.get("artist", {}).get("name", ""),
+                        "cover_url": al.get("image", {}).get("large", ""),
+                        "tracks_count": al.get("tracks_count", 0),
+                        "release_date": al.get("release_date_original", ""),
+                        "year": (al.get("release_date_original") or "")[:4],
+                        "hires": al.get("hires_streamable", False),
+                        "source": "qobuz", "service": "Qobuz",
+                    })
+                return out
+            except Exception as e:
+                import logging
+                logging.getLogger("search").warning(f"qobuz_albums failed: {e}")
+                return []
 
         def _do_itunes_tracks():
             r = http_requests.get(

@@ -87,18 +87,27 @@ def validate_download_duration(filepath: str, expected_seconds: int) -> tuple[bo
 
     actual_sec = round(actual)
 
-    # Detect preview/sample
+    # Detect preview/sample - file is much shorter than expected
     if expected_seconds >= 60 and actual_sec <= 35:
         return False, (
             f"Detected preview/sample: file is {actual_sec}s, "
             f"expected ~{expected_seconds}s"
         )
 
-    # Large mismatch check
-    if expected_seconds >= 90:
-        allowed = max(15, round(expected_seconds * 0.25))
-        diff = abs(actual_sec - expected_seconds)
-        if diff > allowed:
+    # Mismatch check - only reject if file is significantly shorter (preview)
+    # or unreasonably longer (>2x expected, likely wrong content)
+    if expected_seconds >= 60:
+        if actual_sec < expected_seconds:
+            # File is shorter - likely a preview/sample
+            allowed = max(15, round(expected_seconds * 0.25))
+            diff = expected_seconds - actual_sec
+            if diff > allowed:
+                return False, (
+                    f"Duration mismatch: file is {actual_sec}s, "
+                    f"expected ~{expected_seconds}s"
+                )
+        elif actual_sec > expected_seconds * 2:
+            # File is more than 2x longer - likely wrong content
             return False, (
                 f"Duration mismatch: file is {actual_sec}s, "
                 f"expected ~{expected_seconds}s"

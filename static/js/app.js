@@ -1621,7 +1621,8 @@
 
     function previewBtn(previewUrl) {
         if (!previewUrl) return "";
-        return `<button class="btn-preview" onclick="window.sfTogglePreview('${escJs(previewUrl)}', this)" title="Preview"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
+        const proxyUrl = `/api/preview?url=${encodeURIComponent(previewUrl)}`;
+        return `<button class="btn-preview" onclick="window.sfTogglePreview('${escJs(proxyUrl)}', this)" title="Preview"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
     }
 
     // Init
