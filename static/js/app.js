@@ -94,7 +94,7 @@
             d.source || ""
         );
         if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
-            _watchSentinel("search-tracks-sentinel", loadMoreSearch);
+            _ensureSearchSentinel();
         }
     }
 
@@ -155,7 +155,6 @@
             );
             if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
                 _ensureSearchSentinel();
-                _startSearchTracksObserver();
             }
         } catch (e) {
             _searchState = null;
@@ -217,6 +216,9 @@
             source: partialSource,
         };
         _renderIncrementalSearchResults(tracks, artists, albums, ytTracks, dzTracks, scTracks, partialSource);
+        if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
+            _ensureSearchSentinel();
+        }
     }
 
     /** Render only the sections that have data so far, with loading indicators for pending sections. */
@@ -1621,87 +1623,61 @@
 
     function previewBtn(previewUrl) {
         if (!previewUrl) return "";
-        const proxyUrl = `/api/preview?url=${encodeURIComponent(previewUrl)}`;
-        return `<button class="btn-preview" onclick="window.sfTogglePreview('${escJs(proxyUrl)}', this)" title="Preview"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
+        return `<button class="btn-preview" onclick="window.sfTogglePreview('${escJs(previewUrl)}', this)" title="Preview"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`;
     }
 
-    // Init
-        function _watchSentinel(sentinelId, callback) {
-            const old = _sectionObservers.get(sentinelId);
-            if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
-            const el = $(`#${sentinelId}`);
-            if (!el) return;
-            const obs = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) callback();
-            }, { rootMargin: '200px' });
-            obs.observe(el);
-            _sectionObservers.set(sentinelId, obs);
-        }
+    function _watchSentinel(sentinelId, callback) {
+        const old = _sectionObservers.get(sentinelId);
+        if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
+        const el = $(`#${sentinelId}`);
+        if (!el) return;
+        const obs = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) callback();
+        }, { rootMargin: '300px 0px' });
+        obs.observe(el);
+        _sectionObservers.set(sentinelId, obs);
+    }
 
-        function _unwatchSentinel(sentinelId) {
-            const old = _sectionObservers.get(sentinelId);
-            if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
-        }
+    function _unwatchSentinel(sentinelId) {
+        const old = _sectionObservers.get(sentinelId);
+        if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
+    }
 
-    // ── Search infinite scroll via MutationObserver ───────────────────────────
-    // Watch #tracks-list for child additions and re-attach sentinel when needed.
-    // This is more reliable than window scroll for elements appended to non-
-    // scrolling containers (the sentinel sits at the bottom of the growing list).
-    let _searchTracksObserver = null;
     function _ensureSearchSentinel() {
-        if (!searchPagination.hasMore) return;
+        if (!searchPagination.hasMore || searchPagination.loading) return;
         if (!_isSectionEnabled("tracks")) return;
-        const list = $("#tracks-list");
-        if (!list) return;
-        _unwatchSentinel('search-tracks-sentinel');
+        const section = $("#tracks-results-section");
+        if (!section) return;
+
+        _unwatchSentinel("search-tracks-sentinel");
         const existing = $("#search-tracks-sentinel");
         if (existing) existing.remove();
-        const sentinel = document.createElement('div');
-        sentinel.id = 'search-tracks-sentinel';
-        sentinel.className = 'load-sentinel';
-        sentinel.textContent = 'Scroll to load more tracks';
-        list.appendChild(sentinel);
-        _watchSentinel('search-tracks-sentinel', loadMoreSearch);
+
+        const sentinel = document.createElement("div");
+        sentinel.id = "search-tracks-sentinel";
+        sentinel.className = "load-sentinel";
+        sentinel.textContent = "Scroll to load more tracks";
+        section.appendChild(sentinel);
+        _watchSentinel("search-tracks-sentinel", loadMoreSearch);
     }
 
-    function _startSearchTracksObserver() {
-        _stopSearchTracksObserver();
-        const list = $("#tracks-list");
-        if (!list) return;
-        _searchTracksObserver = new MutationObserver(() => {
-            if (searchPagination.hasMore && !searchPagination.loading) {
-                // Re-ensure sentinel after any DOM mutation
-                _ensureSearchSentinel();
+    let _searchScrollTicking = false;
+    window.addEventListener("scroll", () => {
+        if (_searchScrollTicking) return;
+        _searchScrollTicking = true;
+        requestAnimationFrame(() => {
+            _searchScrollTicking = false;
+            if (!searchPagination.hasMore || searchPagination.loading) return;
+            const sentinel = $("#search-tracks-sentinel");
+            if (!sentinel) return;
+            const rect = sentinel.getBoundingClientRect();
+            if (rect.top <= (window.innerHeight + 300)) {
+                loadMoreSearch();
             }
         });
-        _searchTracksObserver.observe(list, { childList: true });
-    }
+    }, { passive: true });
 
-    function _stopSearchTracksObserver() {
-        if (_searchTracksObserver) {
-            _searchTracksObserver.disconnect();
-            _searchTracksObserver = null;
-        }
-    }
-
-        function _watchSentinel(sentinelId, callback) {
-            const old = _sectionObservers.get(sentinelId);
-            if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
-            const el = $(`#${sentinelId}`);
-            if (!el) return;
-            const obs = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) callback();
-            }, { rootMargin: '200px' });
-            obs.observe(el);
-            _sectionObservers.set(sentinelId, obs);
-        }
-
-        function _unwatchSentinel(sentinelId) {
-            const old = _sectionObservers.get(sentinelId);
-            if (old) { old.disconnect(); _sectionObservers.delete(sentinelId); }
-        }
-
-        // Init
+    // Init
     updateQueueBadge();
     // Load history on init if history page is active
     if ($("#page-history").classList.contains("active")) loadHistory();
