@@ -446,14 +446,14 @@ def search():
 
         def _do_deezer_tracks():
             from backend.deezer import DeezerClient
-            return DeezerClient().search_tracks(q, limit=10)
+            return DeezerClient().search_tracks(q, limit=20)
 
         def _do_soundcloud_tracks():
             from backend.soundcloud import SoundCloudClient
-            return SoundCloudClient().search_tracks(q, limit=10)
+            return SoundCloudClient().search_tracks(q, limit=20)
 
         def _do_youtube():
-            return _youtube_search(q, 10)
+            return _youtube_search(q, 20)
 
         # Build list of (label, future) pairs so we can emit when each completes
         if offset == 0:
@@ -505,37 +505,37 @@ def search():
                     if sid:
                         socketio.emit("search_partial", {
                             "section": "tracks", "data": track_items, "done": list(done_labels),
-                            "source": result["source"], "has_more": result["has_more"], "append": True,
+                            "source": result["source"], "has_more": result["has_more"], "append": True, "q": q,
                         }, room=sid)
                 elif label == "qobuz_artists":
                     result["artists"].extend(data)
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "artists", "data": data, "done": list(done_labels), "append": True,
+                            "section": "artists", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "qobuz_albums":
                     result["albums"].extend(data)
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "albums", "data": data, "done": list(done_labels), "append": True,
+                            "section": "albums", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "youtube_tracks":
                     result["youtube_tracks"] = data
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "youtube_tracks", "data": data, "done": list(done_labels),
+                            "section": "youtube_tracks", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "deezer_tracks":
                     result["deezer_tracks"] = data
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "deezer_tracks", "data": data, "done": list(done_labels),
+                            "section": "deezer_tracks", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "soundcloud_tracks":
                     result["soundcloud_tracks"] = data
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "soundcloud_tracks", "data": data, "done": list(done_labels),
+                            "section": "soundcloud_tracks", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "itunes_tracks":
                     track_items = data.get("items", []) if isinstance(data, dict) else (data or [])
@@ -546,19 +546,19 @@ def search():
                     if sid:
                         socketio.emit("search_partial", {
                             "section": "tracks", "data": track_items, "done": list(done_labels),
-                            "source": "itunes", "has_more": result["has_more"], "append": True,
+                            "source": "itunes", "has_more": result["has_more"], "append": True, "q": q,
                         }, room=sid)
                 elif label == "itunes_artists":
                     result["artists"].extend(data)
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "artists", "data": data, "done": list(done_labels), "append": True,
+                            "section": "artists", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "itunes_albums":
                     result["albums"].extend(data)
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "albums", "data": data, "done": list(done_labels), "append": True,
+                            "section": "albums", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
 
         if sid:
@@ -568,7 +568,7 @@ def search():
                 "deezer_tracks": result["deezer_tracks"],
                 "soundcloud_tracks": result["soundcloud_tracks"],
                 "source": result["source"], "has_more": result["has_more"],
-                "offset": result["offset"],
+                "offset": result["offset"], "q": q,
             }, room=sid)
 
         return result

@@ -106,6 +106,14 @@
         return out;
     }
 
+    function _composeMergedTracks(baseTracks, youtubeTracks, deezerTracks, soundcloudTracks) {
+        let merged = _mergeUnique([], baseTracks || [], "tracks");
+        merged = _mergeUnique(merged, youtubeTracks || [], "tracks");
+        merged = _mergeUnique(merged, deezerTracks || [], "tracks");
+        merged = _mergeUnique(merged, soundcloudTracks || [], "tracks");
+        return merged;
+    }
+
     function _rerenderSearchFromState() {
         const d = _latestSearchPayload || {};
         renderSearchResults(
@@ -137,7 +145,8 @@
 
         // Set up SocketIO listeners for incremental results
         const onPartial = (payload) => {
-            if (!_searchState || payload.q !== _searchState.q) return;
+            if (!_searchState) return;
+            if (payload && payload.q && payload.q !== _searchState.q) return;
             _searchState.doneSections.add(payload.section);
             // If HTTP response hasn't rendered yet, update incrementally
             if (!_searchState.rendered) {
@@ -145,7 +154,8 @@
             }
         };
         const onDone = (payload) => {
-            if (!_searchState || payload.q !== _searchState.q) return;
+            if (!_searchState) return;
+            if (payload && payload.q && payload.q !== _searchState.q) return;
             _searchState.rendered = true;
             _searchState = null;
             socket.off("search_partial", onPartial);
@@ -159,7 +169,16 @@
             const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0&sid=${encodeURIComponent(sid)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-            _latestSearchPayload = data;
+            const mergedTracks = _composeMergedTracks(
+                data.tracks || [],
+                data.youtube_tracks || [],
+                data.deezer_tracks || [],
+                data.soundcloud_tracks || []
+            );
+            _latestSearchPayload = {
+                ...data,
+                tracks: mergedTracks,
+            };
 
             // Mark all sections as done so socket events are ignored
             _searchState.rendered = true;
@@ -170,7 +189,7 @@
             searchPagination.hasMore = !!data.has_more;
             searchPagination.offset = (data.tracks || []).length;
             renderSearchResults(
-                data.tracks || [],
+                mergedTracks,
                 data.artists || [],
                 data.albums || [],
                 data.youtube_tracks || [],
@@ -214,16 +233,19 @@
             _searchState._ytTracks = shouldAppend
                 ? _mergeUnique(_searchState._ytTracks || [], data || [], "tracks")
                 : (data || []);
+            _searchState._tracks = _mergeUnique(_searchState._tracks || [], data || [], "tracks");
         }
         if (section === "deezer_tracks") {
             _searchState._dzTracks = shouldAppend
                 ? _mergeUnique(_searchState._dzTracks || [], data || [], "tracks")
                 : (data || []);
+            _searchState._tracks = _mergeUnique(_searchState._tracks || [], data || [], "tracks");
         }
         if (section === "soundcloud_tracks") {
             _searchState._scTracks = shouldAppend
                 ? _mergeUnique(_searchState._scTracks || [], data || [], "tracks")
                 : (data || []);
+            _searchState._tracks = _mergeUnique(_searchState._tracks || [], data || [], "tracks");
         }
 
         const tracks = _searchState._tracks || [];
