@@ -12,6 +12,7 @@ This release adds parallel album/playlist downloads with in-order UI completion,
 
 ### Bug Fixes
 
+- **Search: Infinite scroll pagination** — The sentinel `div` appended to the tracks list had no intrinsic height, making it invisible to the `IntersectionObserver` (and the fallback `window.scroll` handler) when it fell outside the viewport. Replaced the window scroll listener with a `MutationObserver` on `#tracks-list` that re-attaches the sentinel after every child addition, and added `min-height: 40px` to `.load-sentinel` to guarantee reliable intersection detection.
 - **Search: Preview playback error handling** — Added `oncanplay` and `onerror` handlers to the preview audio element so that failed preview playback (network issues, CORS, invalid URL) resets the button state and shows a toast notification instead of leaving the button in a broken "playing" state. Added a loading spinner state while the audio buffers to give better visual feedback.
 - **Docker: Search slowness from eventlet green DNS** — Eventlet's green DNS resolver introduced high latency across concurrent search API calls inside Docker due to the container's embedded DNS server. Fixed by setting `EVENTLET_NO_GREENDNS=yes` in both `Dockerfile` and `docker-compose.yml`, and adding external DNS servers (`8.8.8.8`, `8.8.4.4`) to `docker-compose.yml`.
 
