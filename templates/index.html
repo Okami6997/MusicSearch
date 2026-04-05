@@ -52,13 +52,8 @@
                         <button id="btn-search" class="btn-primary">Search</button>
                     </div>
                     <div id="search-filters" class="search-filters hidden" aria-label="Search result filters">
-                        <span class="search-filters-label">Show:</span>
-                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="tracks" checked>Tracks</label>
-                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="artists" checked>Artists</label>
-                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="albums" checked>Albums</label>
-                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="youtube" checked>YouTube</label>
-                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="deezer" checked>Deezer</label>
-                        <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-section="soundcloud" checked>SoundCloud</label>
+                        <button id="btn-search-filters" class="btn-ghost" type="button">Filters</button>
+                        <span id="search-filter-summary" class="search-filters-label">All sections and services</span>
                     </div>
                 </div>
                 <div id="tab-search-url" class="tab-content">
@@ -188,6 +183,44 @@
             </div>
         </div>
     </main>
+</div>
+
+<!-- Search Filters Modal -->
+<div id="search-filter-modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Search Filters</h2>
+            <button id="btn-close-search-filters" class="icon-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="settings-group">
+                <label>Sections</label>
+                <div class="search-filter-grid" id="search-filter-sections">
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="section" data-key="tracks" checked>Tracks</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="section" data-key="artists" checked>Artists</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="section" data-key="albums" checked>Albums</label>
+                </div>
+            </div>
+            <div class="settings-group">
+                <label>Services</label>
+                <div class="search-filter-grid" id="search-filter-services">
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="qobuz" checked>Qobuz</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="itunes" checked>Apple Music</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="youtube" checked>YouTube</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="deezer" checked>Deezer</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="soundcloud" checked>SoundCloud</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="tidal" checked>Tidal</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="spotify" checked>Spotify</label>
+                    <label class="search-filter-pill"><input type="checkbox" class="search-filter-toggle" data-filter-type="service" data-key="amazon" checked>Amazon Music</label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="btn-reset-search-filters" class="btn-ghost">Reset</button>
+            <button id="btn-apply-search-filters" class="btn-primary">Apply</button>
+        </div>
+    </div>
 </div>
 
 <!-- Queue Modal -->

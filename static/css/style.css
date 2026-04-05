@@ -89,6 +89,11 @@ input, select { font: inherit; color: inherit; }
     color: var(--text-dim);
     margin-right: 4px;
 }
+.search-filter-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
 .search-filter-pill {
     display: inline-flex;
     align-items: center;

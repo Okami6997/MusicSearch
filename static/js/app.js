@@ -28,6 +28,7 @@
     const empty = $("#empty");
     const queueModal = $("#queue-modal");
     const settingsModal = $("#settings-modal");
+    const searchFilterModal = $("#search-filter-modal");
     const queueBadge = $("#queue-badge");
 
     // ── Page Navigation ─────────────────────────────────────
@@ -68,18 +69,69 @@
     // ── Search state for incremental rendering ──────────────────────────
     let _searchState = null;   // { q, doneSections, rendered }
     let _latestSearchPayload = null;
-
-    $$(".search-filter-toggle").forEach((toggle) => {
-        toggle.addEventListener("change", () => {
-            if (_latestSearchPayload) {
-                _rerenderSearchFromState();
-            }
-        });
-    });
+    const _defaultSearchFilters = {
+        sections: { tracks: true, artists: true, albums: true },
+        services: {
+            qobuz: true,
+            itunes: true,
+            youtube: true,
+            deezer: true,
+            soundcloud: true,
+            tidal: true,
+            spotify: true,
+            amazon: true,
+        },
+    };
+    let _searchFilters = JSON.parse(JSON.stringify(_defaultSearchFilters));
 
     function _isSectionEnabled(sectionKey) {
-        const el = document.querySelector(`.search-filter-toggle[data-section="${sectionKey}"]`);
-        return el ? !!el.checked : true;
+        return !!(_searchFilters.sections && _searchFilters.sections[sectionKey]);
+    }
+
+    function _normalizeServiceKey(track) {
+        const src = String(track?.source || "").toLowerCase();
+        if (src === "apple" || src === "apple_music") return "itunes";
+        return src;
+    }
+
+    function _isServiceEnabled(track) {
+        const key = _normalizeServiceKey(track);
+        if (!key) return true;
+        if (!Object.prototype.hasOwnProperty.call(_searchFilters.services, key)) return true;
+        return !!_searchFilters.services[key];
+    }
+
+    function _applyServiceFiltersToTracks(tracks) {
+        return (tracks || []).filter((t) => _isServiceEnabled(t));
+    }
+
+    function _renderSearchFilterSummary() {
+        const summaryEl = $("#search-filter-summary");
+        if (!summaryEl) return;
+        const sectionKeys = Object.keys(_searchFilters.sections).filter((k) => _searchFilters.sections[k]);
+        const serviceKeys = Object.keys(_searchFilters.services).filter((k) => _searchFilters.services[k]);
+        summaryEl.textContent = `${sectionKeys.length} sections · ${serviceKeys.length} services enabled`;
+    }
+
+    function _syncSearchFilterModalFromState() {
+        $$("#search-filter-modal .search-filter-toggle").forEach((el) => {
+            const type = el.dataset.filterType;
+            const key = el.dataset.key;
+            if (type === "section") el.checked = !!_searchFilters.sections[key];
+            if (type === "service") el.checked = !!_searchFilters.services[key];
+        });
+    }
+
+    function _applySearchFilterModalToState() {
+        const next = JSON.parse(JSON.stringify(_defaultSearchFilters));
+        $$("#search-filter-modal .search-filter-toggle").forEach((el) => {
+            const type = el.dataset.filterType;
+            const key = el.dataset.key;
+            if (type === "section") next.sections[key] = !!el.checked;
+            if (type === "service") next.services[key] = !!el.checked;
+        });
+        _searchFilters = next;
+        _renderSearchFilterSummary();
     }
 
     function _dedupeKey(item, kind) {
@@ -111,13 +163,19 @@
         merged = _mergeUnique(merged, youtubeTracks || [], "tracks");
         merged = _mergeUnique(merged, deezerTracks || [], "tracks");
         merged = _mergeUnique(merged, soundcloudTracks || [], "tracks");
-        return merged;
+        return _applyServiceFiltersToTracks(merged);
     }
 
     function _rerenderSearchFromState() {
         const d = _latestSearchPayload || {};
-        renderSearchResults(
+        const mergedTracks = _composeMergedTracks(
             d.tracks || [],
+            d.youtube_tracks || [],
+            d.deezer_tracks || [],
+            d.soundcloud_tracks || []
+        );
+        renderSearchResults(
+            mergedTracks,
             d.artists || [],
             d.albums || [],
             d.youtube_tracks || [],
@@ -302,7 +360,7 @@
         const list = $("#tracks-list");
         results.classList.remove("hidden");
 
-        const visibleTracks = _isSectionEnabled("tracks") ? tracks : [];
+        const visibleTracks = _isSectionEnabled("tracks") ? _applyServiceFiltersToTracks(tracks) : [];
         const visibleArtists = _isSectionEnabled("artists") ? artists : [];
         const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
 
@@ -455,7 +513,7 @@
         hideAll();
         const results = $("#search-results");
         const list = $("#tracks-list");
-        const visibleTracks = _isSectionEnabled("tracks") ? tracks : [];
+        const visibleTracks = _isSectionEnabled("tracks") ? _applyServiceFiltersToTracks(tracks) : [];
         const visibleArtists = _isSectionEnabled("artists") ? artists : [];
         const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
         const visibleYoutube = [];
@@ -1489,6 +1547,24 @@
         if (data.status === "failed") toast(`"${data.title || data.url}" failed: ${data.error}`, "error");
     });
 
+    // ── Search Filters Modal ───────────────────────────────
+    $("#btn-search-filters").addEventListener("click", () => {
+        _syncSearchFilterModalFromState();
+        searchFilterModal.classList.remove("hidden");
+    });
+    $("#btn-close-search-filters").addEventListener("click", () => searchFilterModal.classList.add("hidden"));
+    searchFilterModal.querySelector(".modal-overlay").addEventListener("click", () => searchFilterModal.classList.add("hidden"));
+    $("#btn-reset-search-filters").addEventListener("click", () => {
+        _searchFilters = JSON.parse(JSON.stringify(_defaultSearchFilters));
+        _syncSearchFilterModalFromState();
+        _renderSearchFilterSummary();
+    });
+    $("#btn-apply-search-filters").addEventListener("click", () => {
+        _applySearchFilterModalToState();
+        searchFilterModal.classList.add("hidden");
+        if (_latestSearchPayload) _rerenderSearchFromState();
+    });
+
     // ── Settings Modal ──────────────────────────────────────
     $("#btn-settings").addEventListener("click", async () => {
         try {
@@ -1718,6 +1794,7 @@
     }, { passive: true });
 
     // Init
+    _renderSearchFilterSummary();
     updateQueueBadge();
     // Load history on init if history page is active
     if ($("#page-history").classList.contains("active")) loadHistory();
