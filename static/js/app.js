@@ -91,6 +91,7 @@
     function _normalizeServiceKey(track) {
         const src = String(track?.source || "").toLowerCase();
         if (src === "apple" || src === "apple_music") return "itunes";
+        if (src === "youtube_music") return "youtube";
         return src;
     }
 
