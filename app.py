@@ -1,6 +1,7 @@
 """SongsFetch - Flask web application for music search and download."""
 
 import importlib.metadata
+import logging
 import os
 import time
 import uuid
@@ -208,6 +209,88 @@ def resolve_url():
         except Exception:
             pass
         return jsonify(links)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/resolve/album", methods=["GET"])
+def resolve_album():
+    """Expand an album URL into individual tracks."""
+    url = request.args.get("url", "").strip()
+    app.logger.warning("[DEBUG] /api/resolve/album called with url=%s", url)
+    if not url:
+        return jsonify({"error": "URL required"}), 400
+    parsed = parse_music_url(url)
+    platform = parsed.get("platform", "")
+    album_id = parsed.get("id", "")
+
+    tracks: list[dict] = []
+    try:
+        if platform == "spotify":
+            from backend.spotify import SpotifyDownloader
+            tracks = SpotifyDownloader().expand_album(url)
+        elif platform == "youtube":
+            from backend.youtube import YouTubeDownloader
+            tracks = YouTubeDownloader().expand_album(url)
+        elif platform in ("apple_music",):
+            from backend.applemusic import AppleMusicDownloader
+            tracks = AppleMusicDownloader().expand_album(url)
+        elif platform == "qobuz":
+            from backend.qobuz import QobuzDownloader
+            qobuz = QobuzDownloader()
+            resp = qobuz.session.get(
+                "https://www.qobuz.com/api.json/0.2/album/get",
+                params={"album_id": album_id, "app_id": qobuz.APP_ID},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            album = resp.json()
+            album_title = album.get("title", "")
+            album_artist = album.get("artist", {}).get("name", "")
+            cover_url = album.get("image", {}).get("large", "")
+            total_tracks = int(album.get("tracks_count", 0) or 0)
+            album_year = (album.get("release_date_original") or "")[:4]
+            for idx, t in enumerate(album.get("tracks", {}).get("items", [])):
+                tracks.append({
+                    "title": t.get("title", ""),
+                    "artist": t.get("performer", {}).get("name", "") or album_artist,
+                    "album": album_title, "cover_url": cover_url,
+                    "duration_ms": int((t.get("duration", 0) or 0) * 1000),
+                    "track_number": int(t.get("track_number", 0) or 0),
+                    "total_tracks": total_tracks,
+                    "disc_number": int(t.get("media_number", 0) or 1),
+                    "year": album_year, "isrc": t.get("isrc", ""),
+                    "url": "", "source": "qobuz",
+                })
+        elif platform == "deezer":
+            r = http_requests.get(f"https://api.deezer.com/album/{album_id}/tracks", timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                album_r = http_requests.get(f"https://api.deezer.com/album/{album_id}", timeout=10).json()
+                album_title = album_r.get("title", "")
+                album_artist = album_r.get("artist", {}).get("name", "")
+                cover_url = album_r.get("cover_big", "")
+                album_year = (album_r.get("release_date") or "")[:4]
+                total_tracks = album_r.get("nb_tracks", 0)
+                for t in data.get("data", []):
+                    tracks.append({
+                        "title": t.get("title", ""),
+                        "artist": t.get("artist", {}).get("name", "") or album_artist,
+                        "album": album_title, "cover_url": cover_url,
+                        "duration_ms": int((t.get("duration", 0) or 0) * 1000),
+                        "track_number": int(t.get("track_position", 0) or 0),
+                        "total_tracks": total_tracks,
+                        "disc_number": int(t.get("disk_number", 0) or 1),
+                        "year": album_year, "isrc": t.get("isrc", ""),
+                        "url": t.get("link", ""), "source": "deezer",
+                    })
+        elif platform == "amazon":
+            from backend.amazon import AmazonDownloader
+            tracks = AmazonDownloader().expand_album(url)
+
+        if not tracks:
+            return jsonify({"error": f"Could not expand album for {platform}"}), 404
+        return jsonify({"tracks": tracks, "count": len(tracks), "platform": platform})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -867,6 +950,7 @@ def download_album():
     body = request.get_json(silent=True) or {}
     album_id = str(body.get("album_id", "")).strip()
     source = str(body.get("source", "qobuz")).strip().lower()
+    app.logger.warning("[DEBUG] /api/download/album called with album_id=%s source=%s", album_id, source)
     if not album_id:
         return jsonify({"error": "album_id required"}), 400
 
@@ -958,6 +1042,98 @@ def download_album():
         except Exception as e:
             return jsonify({"error": f"Apple Music album fetch failed: {str(e)}"}), 500
 
+    if source == "spotify":
+        try:
+            from backend.spotify import SpotifyDownloader
+            spotify = SpotifyDownloader()
+            tracks = spotify.expand_album(album_id)
+            if not tracks:
+                return jsonify({"error": "No tracks found for this Spotify album"}), 404
+
+            for idx, t in enumerate(tracks):
+                task_id = download_manager.add_track(
+                    url=t.get("url", ""),
+                    isrc=t.get("isrc", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("artist", ""),
+                    album=t.get("album", ""),
+                    cover_url=t.get("cover_url", ""),
+                    duration_ms=int(t.get("duration_ms", 0)),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=int(t.get("total_tracks", 0) or 0),
+                    disc_number=int(t.get("disc_number", 0) or 1),
+                    total_discs=1,
+                    year=str(t.get("year", ""))[:4],
+                    batch_id=batch_id,
+                    batch_seq=idx,
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"Spotify album fetch failed: {str(e)}"}), 500
+
+    if source == "amazon":
+        try:
+            from backend.amazon import AmazonDownloader
+            amazon = AmazonDownloader()
+            tracks = amazon.expand_album(
+                f"https://music.amazon.com/albums/{album_id}"
+                if not album_id.startswith("http") else album_id
+            )
+            if not tracks:
+                return jsonify({"error": "No tracks found for this Amazon album"}), 404
+
+            for idx, t in enumerate(tracks):
+                task_id = download_manager.add_track(
+                    url=t.get("url", ""),
+                    isrc=t.get("isrc", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("artist", ""),
+                    album=t.get("album", ""),
+                    cover_url=t.get("cover_url", ""),
+                    duration_ms=int(t.get("duration_ms", 0)),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=int(t.get("total_tracks", 0) or 0),
+                    disc_number=int(t.get("disc_number", 0) or 1),
+                    total_discs=1,
+                    year=str(t.get("year", ""))[:4],
+                    batch_id=batch_id,
+                    batch_seq=idx,
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"Amazon album fetch failed: {str(e)}"}), 500
+
+    if source == "youtube":
+        try:
+            from backend.youtube import YouTubeDownloader
+            yt = YouTubeDownloader()
+            tracks = yt.expand_album(album_id)
+            if not tracks:
+                return jsonify({"error": "No tracks found for this YouTube album"}), 404
+
+            for idx, t in enumerate(tracks):
+                task_id = download_manager.add_track(
+                    url=t.get("url", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("artist", ""),
+                    album=t.get("album", ""),
+                    cover_url=t.get("cover_url", ""),
+                    duration_ms=int(t.get("duration_ms", 0)),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=int(t.get("total_tracks", 0) or 0),
+                    disc_number=1,
+                    total_discs=1,
+                    year=str(t.get("year", ""))[:4],
+                    batch_id=batch_id,
+                    batch_seq=idx,
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"YouTube album fetch failed: {str(e)}"}), 500
+
     return jsonify({"error": f"Album download not supported for source: {source}"}), 400
 
 
@@ -967,6 +1143,7 @@ def download_playlist():
     body = request.get_json(silent=True) or {}
     playlist_url = str(body.get("url", "")).strip()
     source = str(body.get("source", "apple_music")).strip().lower()
+    app.logger.warning("[DEBUG] /api/download/playlist called with url=%s source=%s", playlist_url, source)
 
     if not playlist_url:
         return jsonify({"error": "url required"}), 400

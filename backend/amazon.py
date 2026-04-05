@@ -142,6 +142,77 @@ class AmazonDownloader:
             result["artist"] = template.get("headerPrimaryText", "") or template.get("headerPrimaryText2", "")
         return result
 
+    def expand_album(self, amazon_url: str) -> list[dict]:
+        """Expand an Amazon album URL into individual tracks.
+
+        Uses SongLink to find the Deezer equivalent album, then queries
+        the Deezer API for the full tracklist (with ISRCs).  Each track
+        is mapped back to an Amazon track URL so the downloader can
+        fetch it from Amazon's CDN.
+        """
+        asin = self.extract_asin(amazon_url)
+        parsed = urlparse(amazon_url)
+        host = parsed.netloc or "music.amazon.com"
+        base_url = f"https://{host}"
+
+        # 1. Resolve via SongLink → find Deezer album
+        deezer_album_id = None
+        try:
+            sl = self.session.get(
+                "https://api.song.link/v1-alpha.1/links",
+                params={"url": f"{base_url}/albums/{asin}"},
+                timeout=20,
+            )
+            if sl.status_code == 200:
+                lbp = sl.json().get("linksByPlatform", {})
+                deezer_url = lbp.get("deezer", {}).get("url", "")
+                m = re.search(r"/album/(\d+)", deezer_url)
+                if m:
+                    deezer_album_id = m.group(1)
+        except Exception:
+            pass
+
+        if not deezer_album_id:
+            return []
+
+        # 2. Fetch tracklist from Deezer
+        try:
+            album_r = self.session.get(
+                f"https://api.deezer.com/album/{deezer_album_id}",
+                timeout=15,
+            ).json()
+            tracks_r = self.session.get(
+                f"https://api.deezer.com/album/{deezer_album_id}/tracks",
+                timeout=15,
+            ).json()
+        except Exception:
+            return []
+
+        album_title = album_r.get("title", "")
+        album_artist = album_r.get("artist", {}).get("name", "")
+        cover_url = album_r.get("cover_big", "")
+        album_year = (album_r.get("release_date") or "")[:4]
+        total_tracks = album_r.get("nb_tracks", 0)
+
+        tracks: list[dict] = []
+        for t in tracks_r.get("data", []):
+            isrc = t.get("isrc", "")
+            tracks.append({
+                "title": t.get("title", ""),
+                "artist": t.get("artist", {}).get("name", "") or album_artist,
+                "album": album_title,
+                "cover_url": cover_url,
+                "duration_ms": int((t.get("duration", 0) or 0) * 1000),
+                "track_number": int(t.get("track_position", 0) or 0),
+                "total_tracks": total_tracks,
+                "disc_number": int(t.get("disk_number", 0) or 1),
+                "year": album_year,
+                "isrc": isrc,
+                "url": "",      # resolved at download time via ISRC
+                "source": "amazon",
+            })
+        return tracks
+
     def download_track(self, amazon_url: str, output_dir: str,
                        filename: str = "", progress_cb=None) -> str:
         """Download a track from an Amazon Music URL."""

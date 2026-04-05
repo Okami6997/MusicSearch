@@ -101,7 +101,7 @@ class SpotifyDownloader:
             return {}
         artists = entity.get("artists", [])
         artist = ", ".join(a.get("name", "") for a in artists) if artists else ""
-        release = entity.get("releaseDate", {}).get("isoString", "")
+        release = (entity.get("releaseDate") or {}).get("isoString", "")
         year = release[:4] if release else ""
         images = entity.get("visualIdentity", {}).get("image", [])
         cover_url = ""
@@ -203,6 +203,84 @@ class SpotifyDownloader:
         return self._stream_download(
             flac_url, output_path, token, progress_cb
         )
+
+    def expand_album(self, spotify_url_or_id: str) -> list[dict]:
+        """Expand a Spotify album URL into individual track records via embed page."""
+        if "/album/" in str(spotify_url_or_id):
+            m = re.search(r"/album/([a-zA-Z0-9]+)", str(spotify_url_or_id))
+            album_id = m.group(1) if m else str(spotify_url_or_id)
+        else:
+            album_id = str(spotify_url_or_id)
+
+        try:
+            resp = self.session.get(
+                f"https://open.spotify.com/embed/album/{album_id}",
+                headers={"User-Agent": self.UA},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return []
+            m = re.search(
+                r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+                resp.text,
+            )
+            if not m:
+                return []
+            data = json.loads(m.group(1))
+            entity = (
+                data.get("props", {})
+                .get("pageProps", {})
+                .get("state", {})
+                .get("data", {})
+                .get("entity", {})
+            )
+            if not entity:
+                return []
+
+            album_name = entity.get("title") or entity.get("name", "")
+            album_artists = entity.get("artists") or []
+            album_artist = ", ".join(a.get("name", "") for a in album_artists) if album_artists else entity.get("subtitle", "")
+            release = (entity.get("releaseDate") or {}).get("isoString", "")
+            year = release[:4] if release else ""
+            images = entity.get("visualIdentity", {}).get("image", [])
+            cover_url = ""
+            for img in images:
+                if img.get("maxHeight", 0) >= 300:
+                    cover_url = img.get("url", "")
+                    break
+            if not cover_url and images:
+                cover_url = images[0].get("url", "")
+
+            track_list = entity.get("trackList", [])
+            total_tracks = len(track_list)
+            tracks = []
+            for idx, t in enumerate(track_list):
+                # Artist is in 'subtitle' or 'artists' list
+                artists = t.get("artists", [])
+                if artists:
+                    artist = ", ".join(a.get("name", "") for a in artists)
+                else:
+                    artist = t.get("subtitle", "") or album_artist
+                # Track ID is in the URI (spotify:track:XXXX)
+                uri = t.get("uri", "")
+                track_id = uri.split(":")[-1] if "track:" in uri else ""
+                track_url = f"https://open.spotify.com/track/{track_id}" if track_id else ""
+                tracks.append({
+                    "title": t.get("title") or t.get("name", ""),
+                    "artist": artist,
+                    "album": album_name,
+                    "cover_url": cover_url,
+                    "duration_ms": t.get("duration", 0),
+                    "track_number": idx + 1,
+                    "total_tracks": total_tracks,
+                    "disc_number": 1,
+                    "year": year,
+                    "url": track_url,
+                    "source": "spotify",
+                })
+            return tracks
+        except Exception:
+            return []
 
     def expand_playlist(self, spotify_url_or_id: str) -> list[dict]:
         """Expand a Spotify playlist URL into individual track records.

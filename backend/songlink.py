@@ -24,6 +24,8 @@ MUSIC_URL_PATTERNS = [
     re.compile(r"music\.apple\.com/.+?/(album|playlist|song)/"),
     re.compile(r"itunes\.apple\.com/.+?/id\d+"),
     re.compile(r"music\.youtube\.com/watch"),
+    re.compile(r"music\.youtube\.com/playlist"),
+    re.compile(r"music\.youtube\.com/browse/"),
     re.compile(r"soundcloud\.com/"),
     re.compile(r"qobuz\.com/.+?/(album|track)/"),
 ]
@@ -56,6 +58,14 @@ def parse_music_url(url: str) -> dict:
         if m:
             return {"platform": "qobuz", "type": m.group(1), "id": m.group(2)}
     if "youtube.com" in url or "youtu.be" in url:
+        # Album / playlist URLs (music.youtube.com/playlist?list=… or /browse/MPREb_…)
+        m = re.search(r"music\.youtube\.com/playlist\?list=([A-Za-z0-9_-]+)", url)
+        if m:
+            return {"platform": "youtube", "type": "album", "id": m.group(1)}
+        m = re.search(r"music\.youtube\.com/browse/(MPREb_[A-Za-z0-9_-]+)", url)
+        if m:
+            return {"platform": "youtube", "type": "album", "id": m.group(1)}
+        # Single video
         m = re.search(r"(?:v=|/v/|youtu\.be/|/embed/)([a-zA-Z0-9_-]{11})", url)
         if m:
             return {"platform": "youtube", "type": "track", "id": m.group(1)}
@@ -149,7 +159,7 @@ class SongLinkClient:
             "youtube": "youtube_url", "soundcloud": "soundcloud_url",
         }
         pk = _platform_key_map.get(parsed.get("platform", ""))
-        if pk and parsed.get("type") == "track" and not links.get(pk):
+        if pk and parsed.get("type") in ("track", "album") and not links.get(pk):
             links[pk] = _check_url
 
         misresolved = self._is_misresolved_as_album(_check_url, links)

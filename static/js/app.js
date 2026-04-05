@@ -677,11 +677,88 @@
             const resp = await fetch(`/api/resolve?url=${encodeURIComponent(url)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
+            const parsed = data.parsed || {};
+            console.log("[doResolve] parsed:", JSON.stringify(parsed));
+            // If the URL resolves to an album, expand it into tracks
+            if (parsed.type === "album") {
+                console.log("[doResolve] detected album, calling /api/resolve/album");
+                try {
+                    const albumResp = await fetch(`/api/resolve/album?url=${encodeURIComponent(url)}`);
+                    const albumData = await albumResp.json();
+                    console.log("[doResolve] albumData tracks:", albumData.tracks ? albumData.tracks.length : 0, "error:", albumData.error);
+                    if (albumData.tracks && albumData.tracks.length > 0) {
+                        renderAlbumResults(url, albumData, data);
+                        return;
+                    }
+                    // Album expansion returned no tracks - show error but don't fall through to track download
+                    toast(albumData.error || "Could not expand album tracks", "error");
+                    showEmpty();
+                    return;
+                } catch (albumErr) {
+                    console.error("[doResolve] album expansion error:", albumErr);
+                    toast("Failed to expand album: " + (albumErr.message || "unknown error"), "error");
+                    showEmpty();
+                    return;
+                }
+            }
+            console.log("[doResolve] falling through to renderResolveResults");
             renderResolveResults(url, data);
         } catch (e) {
+            console.error("[doResolve] outer error:", e);
             toast(e.message, "error");
             showEmpty();
         }
+    }
+
+    function renderAlbumResults(url, albumData, resolveData) {
+        hideAll();
+        const card = $("#resolve-results");
+        card.classList.remove("hidden");
+
+        const tracks = albumData.tracks || [];
+        const firstTrack = tracks[0] || {};
+        const albumName = firstTrack.album || "";
+        const artistName = firstTrack.artist || "";
+        const coverUrl = firstTrack.cover_url || "";
+
+        let html = '';
+        if (albumName || artistName) {
+            html += `<div class="info-row" style="margin-bottom:8px"><strong>Album:</strong> ${esc(albumName)}</div>`;
+            html += `<div class="info-row" style="margin-bottom:8px"><strong>Artist:</strong> ${esc(artistName)}</div>`;
+            html += `<div class="info-row" style="margin-bottom:12px"><strong>Tracks:</strong> ${tracks.length}</div>`;
+        }
+        html += `<button class="btn-primary" style="margin-bottom:12px" onclick="window._sfDownloadAlbumTracks()">Download All (${tracks.length} tracks)</button>`;
+        html += '<div style="max-height:400px;overflow-y:auto">';
+        tracks.forEach((t, i) => {
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border, #333)">`;
+            html += `<span>${i+1}. ${esc(t.title || 'Unknown')} — ${esc(t.artist || '')}</span>`;
+            html += `<button class="btn-ghost" style="font-size:12px;padding:2px 8px" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>`;
+            html += `</div>`;
+        });
+        html += '</div>';
+
+        $("#platform-list").innerHTML = "";
+        $("#resolve-actions").innerHTML = html;
+
+        // Store tracks for "Download All" button
+        window._albumTracksCache = tracks;
+        window._sfDownloadAlbumTracks = async function() {
+            const tks = window._albumTracksCache || [];
+            if (!tks.length) return;
+            try {
+                const resp = await fetch("/api/download/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tracks: tks }),
+                });
+                const data = await resp.json();
+                if (data.error) throw new Error(data.error);
+                toast(`Queued ${tks.length} album tracks`, "success");
+                updateQueueBadge();
+            } catch (e) {
+                toast(e.message, "error");
+            }
+        };
     }
 
     function renderResolveResults(url, data) {
@@ -726,6 +803,7 @@
         const artist = data.artist || parsed.artist || "";
         const album = data.album || "";
         const isPlaylist = parsed.type === "playlist" || /playlist/.test(url);
+        const isAlbum = parsed.type === "album";
         let actionsHtml = '';
         if (isrc) {
             actionsHtml += `<div class="info-row"><strong>ISRC:</strong> ${esc(isrc)}</div>`;
@@ -738,6 +816,11 @@
         if (isPlaylist) {
             const src = parsed.platform === "spotify" ? "spotify" : "apple_music";
             actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownloadPlaylist('${esc(url)}','${src}')">Download Playlist</button>`;
+        } else if (isAlbum) {
+            // Album URL reached renderResolveResults (album expansion likely failed) — try again via download/album
+            const albumId = parsed.id || "";
+            const src = parsed.platform || "qobuz";
+            actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownloadAlbum('${escJs(albumId)}','${escJs(src)}','${escJs(album)}','${escJs(artist)}','')">Download Album</button>`;
         } else {
             // Single track download button - use selected platform URL or fallbacks
             const dlUrl = window._selectedUrl || data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";

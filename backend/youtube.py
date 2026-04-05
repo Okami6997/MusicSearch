@@ -339,6 +339,61 @@ class YouTubeDownloader:
 
         return out
 
+    def expand_album(self, url_or_id: str) -> list[dict]:
+        """Expand a YouTube Music album/playlist URL into individual tracks."""
+        from yt_dlp import YoutubeDL
+
+        # Normalise: accept playlist ID, browse ID, or full URL
+        if url_or_id.startswith("http"):
+            playlist_url = url_or_id
+        elif url_or_id.startswith("OLAK") or url_or_id.startswith("PL"):
+            playlist_url = f"https://music.youtube.com/playlist?list={url_or_id}"
+        elif url_or_id.startswith("MPRE"):
+            playlist_url = f"https://music.youtube.com/browse/{url_or_id}"
+        else:
+            playlist_url = f"https://music.youtube.com/playlist?list={url_or_id}"
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": True,
+            "noplaylist": False,
+        }
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(playlist_url, download=False)
+        except Exception:
+            return []
+
+        if not info:
+            return []
+
+        album_title = info.get("title", "")
+        entries = info.get("entries", []) or []
+        total_tracks = len(entries)
+        tracks = []
+        for idx, e in enumerate(entries):
+            if not e:
+                continue
+            vid = e.get("id", "")
+            if not vid:
+                continue
+            tracks.append({
+                "title": e.get("title", ""),
+                "artist": e.get("uploader", "") or e.get("channel", ""),
+                "album": album_title,
+                "cover_url": e.get("thumbnail", "") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                "duration_ms": int((e.get("duration") or 0) * 1000),
+                "track_number": idx + 1,
+                "total_tracks": total_tracks,
+                "disc_number": 1,
+                "year": "",
+                "url": f"https://music.youtube.com/watch?v={vid}",
+                "source": "youtube",
+            })
+        return tracks
+
     # ── Download APIs ────────────────────────────────────────────
 
     def _download_with_ytdlp(self, video_id: str, output_path: str,

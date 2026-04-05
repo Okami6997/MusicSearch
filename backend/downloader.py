@@ -193,7 +193,7 @@ class DownloadManager:
                 # If it's a direct platform URL, set it directly
                 if parsed["platform"] == "tidal" and parsed["type"] == "track":
                     links["tidal_url"] = task.url
-                elif parsed["platform"] == "amazon":
+                elif parsed["platform"] == "amazon" and parsed["type"] == "track":
                     # Always keep the original Amazon URL — SongLink may resolve a
                     # track URL to an album URL causing wrong-track downloads.
                     links["amazon_url"] = task.url
@@ -213,7 +213,7 @@ class DownloadManager:
                                 isrc = ameta.get("isrc", "")
                         except Exception:
                             pass
-                elif parsed["platform"] == "youtube":
+                elif parsed["platform"] == "youtube" and parsed["type"] != "album":
                     links["youtube_url"] = task.url
                 elif parsed["platform"] == "deezer" and parsed["type"] == "track":
                     links["deezer_url"] = task.url
