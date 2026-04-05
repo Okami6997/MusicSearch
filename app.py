@@ -276,8 +276,8 @@ def search():
         except Exception:
             pass
 
-        offset = request.args.get("offset", 0, type=int)
-        sid = (request.args.get("sid", "") or "").strip()
+    offset = request.args.get("offset", 0, type=int)
+    sid = (request.args.get("sid", "") or "").strip()
 
     # ── Concurrent search helper ────────────────────────────────────────────
     def _run_concurrent(q: str, offset: int, fallback: bool = False) -> dict:
