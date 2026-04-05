@@ -180,9 +180,12 @@
                 tracks: mergedTracks,
             };
 
-            // Mark all sections as done so socket events are ignored
-            _searchState.rendered = true;
-            _searchState = null;
+            // Mark all sections as done so socket events are ignored.
+            // Guard against race: search_done can null out _searchState before fetch resolves.
+            if (_searchState && _searchState.q === q) {
+                _searchState.rendered = true;
+                _searchState = null;
+            }
             socket.off("search_partial", onPartial);
             socket.off("search_done", onDone);
 
