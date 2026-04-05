@@ -305,11 +305,8 @@
         const visibleTracks = _isSectionEnabled("tracks") ? tracks : [];
         const visibleArtists = _isSectionEnabled("artists") ? artists : [];
         const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
-        const visibleYoutube = _isSectionEnabled("youtube") ? youtubeTracks : [];
-        const visibleDeezer = _isSectionEnabled("deezer") ? deezerTracks : [];
-        const visibleSoundcloud = _isSectionEnabled("soundcloud") ? soundcloudTracks : [];
 
-        const allEmpty = !visibleTracks.length && !visibleArtists.length && !visibleAlbums.length && !visibleYoutube.length && !visibleDeezer.length && !visibleSoundcloud.length;
+        const allEmpty = !visibleTracks.length && !visibleArtists.length && !visibleAlbums.length;
         if (allEmpty) {
             // Nothing yet — show loading indicator
             list.innerHTML = '<p class="text-muted">Waiting for results...</p>';
@@ -337,21 +334,6 @@
             html += _renderTracksSection(visibleTracks, searchSource);
         } else if (_isSectionEnabled("tracks") && !_searchState.doneSections.has("tracks")) {
             html += '<div class="results-section"><h3 class="results-heading">Tracks</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
-        }
-
-        // YouTube
-        if (visibleYoutube.length) {
-            html += _renderYoutubeSection(visibleYoutube);
-        } else if (_isSectionEnabled("youtube") && !_searchState.doneSections.has("youtube_tracks")) {
-            html += '';
-        }
-
-        if (visibleDeezer.length) {
-            html += _renderExternalServiceSection("Deezer", visibleDeezer, "Deezer");
-        }
-
-        if (visibleSoundcloud.length) {
-            html += _renderExternalServiceSection("SoundCloud", visibleSoundcloud, "SoundCloud");
         }
 
         list.innerHTML = html;
@@ -476,9 +458,9 @@
         const visibleTracks = _isSectionEnabled("tracks") ? tracks : [];
         const visibleArtists = _isSectionEnabled("artists") ? artists : [];
         const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
-        const visibleYoutube = _isSectionEnabled("youtube") ? youtubeTracks : [];
-        const visibleDeezer = _isSectionEnabled("deezer") ? deezerTracks : [];
-        const visibleSoundcloud = _isSectionEnabled("soundcloud") ? soundcloudTracks : [];
+        const visibleYoutube = [];
+        const visibleDeezer = [];
+        const visibleSoundcloud = [];
 
         if (!visibleTracks.length && !visibleArtists.length && !visibleAlbums.length && !visibleYoutube.length && !visibleDeezer.length && !visibleSoundcloud.length) {
             list.innerHTML = '<p class="text-muted">No results found.</p>';

@@ -521,22 +521,40 @@ def search():
                             "section": "albums", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "youtube_tracks":
-                    result["youtube_tracks"] = data
+                    norm = []
+                    for item in (data or []):
+                        row = dict(item)
+                        row["source"] = "youtube"
+                        row["service"] = "YouTube Music"
+                        norm.append(row)
+                    result["youtube_tracks"] = norm
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "youtube_tracks", "data": data, "done": list(done_labels), "append": True, "q": q,
+                            "section": "youtube_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "deezer_tracks":
-                    result["deezer_tracks"] = data
+                    norm = []
+                    for item in (data or []):
+                        row = dict(item)
+                        row["source"] = "deezer"
+                        row["service"] = "Deezer"
+                        norm.append(row)
+                    result["deezer_tracks"] = norm
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "deezer_tracks", "data": data, "done": list(done_labels), "append": True, "q": q,
+                            "section": "deezer_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "soundcloud_tracks":
-                    result["soundcloud_tracks"] = data
+                    norm = []
+                    for item in (data or []):
+                        row = dict(item)
+                        row["source"] = "soundcloud"
+                        row["service"] = "SoundCloud"
+                        norm.append(row)
+                    result["soundcloud_tracks"] = norm
                     if sid:
                         socketio.emit("search_partial", {
-                            "section": "soundcloud_tracks", "data": data, "done": list(done_labels), "append": True, "q": q,
+                            "section": "soundcloud_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
                 elif label == "itunes_tracks":
                     track_items = data.get("items", []) if isinstance(data, dict) else (data or [])
