@@ -166,7 +166,7 @@
 
         try {
             const sid = socket.id || "";
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0&sid=${encodeURIComponent(sid)}`);
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&sid=${encodeURIComponent(sid)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             const mergedTracks = _composeMergedTracks(
@@ -465,25 +465,8 @@
     }
 
     async function loadMoreSearch() {
-        if (searchPagination.loading || !searchPagination.hasMore) return;
-        searchPagination.loading = true;
-        const sentinel = $('#search-tracks-sentinel');
-        if (sentinel) sentinel.textContent = 'Loading more\u2026';
-        try {
-            const sid = socket.id || "";
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(searchPagination.q)}&offset=${searchPagination.offset}&sid=${encodeURIComponent(sid)}`);
-            const data = await resp.json();
-            if (data.error) throw new Error(data.error);
-            const newTracks = data.tracks || [];
-            searchPagination.offset += newTracks.length;
-            searchPagination.hasMore = !!data.has_more;
-            appendSearchTracks(newTracks, searchPagination.hasMore, data.source || '');
-        } catch (e) {
-            toast(e.message, "error");
-        } finally {
-            searchPagination.loading = false;
-            if (searchPagination.hasMore) _ensureSearchSentinel();
-        }
+        // Search API is now single-call and non-paginated.
+        return;
     }
 
     function renderSearchResults(tracks, artists, albums, youtubeTracks, deezerTracks, soundcloudTracks, searchSource) {

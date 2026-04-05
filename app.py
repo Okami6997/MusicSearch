@@ -276,8 +276,16 @@ def search():
         except Exception:
             pass
 
-    offset = request.args.get("offset", 0, type=int)
+    # Search API is single-call and non-paginated: always resolve from offset 0.
+    offset = 0
     sid = (request.args.get("sid", "") or "").strip()
+
+    # Configurable limits (high defaults) to avoid restrictive result caps.
+    # Clients can override per request: ?limit=...&artist_limit=...&album_limit=...&external_limit=...
+    track_limit = max(1, min(request.args.get("limit", 100, type=int), 200))
+    artist_limit = max(1, min(request.args.get("artist_limit", 25, type=int), 100))
+    album_limit = max(1, min(request.args.get("album_limit", 25, type=int), 100))
+    external_limit = max(1, min(request.args.get("external_limit", track_limit, type=int), 200))
 
     # ── Concurrent search helper ────────────────────────────────────────────
     def _run_concurrent(q: str, offset: int, fallback: bool = False) -> dict:
@@ -286,14 +294,12 @@ def search():
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from backend.qobuz import QobuzDownloader
 
-        TRACK_LIMIT = 20
-
         def _do_qobuz_tracks():
             try:
                 qobuz_dl = QobuzDownloader()
                 r = qobuz_dl.session.get(
                     "https://www.qobuz.com/api.json/0.2/track/search",
-                    params={"query": q, "limit": TRACK_LIMIT, "offset": offset, "app_id": qobuz_dl.APP_ID},
+                    params={"query": q, "limit": track_limit, "offset": offset, "app_id": qobuz_dl.APP_ID},
                     timeout=15,
                 )
                 r.raise_for_status()
@@ -320,8 +326,8 @@ def search():
                         "source": "qobuz", "service": "Qobuz",
                     })
                 total = int(tracks_obj.get("total", 0) or 0)
-                has_more = ((offset + len(out)) < total) if total > 0 else (len(out) >= TRACK_LIMIT)
-                return {"items": out, "has_more": has_more}
+                _ = total  # total kept for debugging/telemetry if needed
+                return {"items": out, "has_more": False}
             except Exception as e:
                 if not (isinstance(e, http_requests.HTTPError) and e.response is not None and e.response.status_code == 401):
                     import logging
@@ -333,7 +339,7 @@ def search():
                 qobuz_dl = QobuzDownloader()
                 r = qobuz_dl.session.get(
                     "https://www.qobuz.com/api.json/0.2/artist/search",
-                    params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
+                    params={"query": q, "limit": artist_limit, "app_id": qobuz_dl.APP_ID},
                     timeout=15,
                 )
                 r.raise_for_status()
@@ -358,7 +364,7 @@ def search():
                 qobuz_dl = QobuzDownloader()
                 r = qobuz_dl.session.get(
                     "https://www.qobuz.com/api.json/0.2/album/search",
-                    params={"query": q, "limit": 5, "app_id": qobuz_dl.APP_ID},
+                    params={"query": q, "limit": album_limit, "app_id": qobuz_dl.APP_ID},
                     timeout=15,
                 )
                 r.raise_for_status()
@@ -384,7 +390,7 @@ def search():
         def _do_itunes_tracks():
             r = http_requests.get(
                 "https://itunes.apple.com/search",
-                params={"term": q, "media": "music", "entity": "song", "limit": TRACK_LIMIT, "offset": offset},
+                params={"term": q, "media": "music", "entity": "song", "limit": track_limit, "offset": offset},
                 timeout=15,
             )
             r.raise_for_status()
@@ -404,12 +410,12 @@ def search():
                     "preview_url": t.get("previewUrl", ""),
                     "source": "itunes", "service": "Apple Music",
                 })
-            return {"items": out, "has_more": len(out) >= TRACK_LIMIT}
+            return {"items": out, "has_more": False}
 
         def _do_itunes_artists():
             r = http_requests.get(
                 "https://itunes.apple.com/search",
-                params={"term": q, "media": "music", "entity": "musicArtist", "limit": 5},
+                params={"term": q, "media": "music", "entity": "musicArtist", "limit": artist_limit},
                 timeout=15,
             )
             r.raise_for_status()
@@ -425,7 +431,7 @@ def search():
         def _do_itunes_albums():
             r = http_requests.get(
                 "https://itunes.apple.com/search",
-                params={"term": q, "media": "music", "entity": "album", "limit": 5},
+                params={"term": q, "media": "music", "entity": "album", "limit": album_limit},
                 timeout=15,
             )
             r.raise_for_status()
@@ -446,36 +452,31 @@ def search():
 
         def _do_deezer_tracks():
             from backend.deezer import DeezerClient
-            return DeezerClient().search_tracks(q, limit=20)
+            return DeezerClient().search_tracks(q, limit=external_limit)
 
         def _do_soundcloud_tracks():
             from backend.soundcloud import SoundCloudClient
-            return SoundCloudClient().search_tracks(q, limit=20)
+            return SoundCloudClient().search_tracks(q, limit=external_limit)
 
         def _do_youtube():
-            return _youtube_search(q, 20)
+            return _youtube_search(q, external_limit)
 
-        # Build list of (label, future) pairs so we can emit when each completes
-        if offset == 0:
-            tasks = [
-                ("qobuz_tracks",   _do_qobuz_tracks),
-                ("qobuz_artists",  _do_qobuz_artists),
-                ("qobuz_albums",   _do_qobuz_albums),
-                ("youtube_tracks", _do_youtube),
-                ("deezer_tracks", _do_deezer_tracks),
-                ("soundcloud_tracks", _do_soundcloud_tracks),
+        # Build list of (label, future) pairs so we can emit when each completes.
+        # Single-call mode: always query all services in one request.
+        tasks = [
+            ("qobuz_tracks",   _do_qobuz_tracks),
+            ("qobuz_artists",  _do_qobuz_artists),
+            ("qobuz_albums",   _do_qobuz_albums),
+            ("youtube_tracks", _do_youtube),
+            ("deezer_tracks", _do_deezer_tracks),
+            ("soundcloud_tracks", _do_soundcloud_tracks),
+        ]
+        if fallback:
+            tasks += [
+                ("itunes_tracks",  _do_itunes_tracks),
+                ("itunes_artists", _do_itunes_artists),
+                ("itunes_albums",  _do_itunes_albums),
             ]
-            if fallback:
-                tasks += [
-                    ("itunes_tracks",  _do_itunes_tracks),
-                    ("itunes_artists", _do_itunes_artists),
-                    ("itunes_albums",  _do_itunes_albums),
-                ]
-        else:
-            # Pagination: only tracks
-            tasks = [("qobuz_tracks", _do_qobuz_tracks)]
-            if fallback:
-                tasks.append(("itunes_tracks", _do_itunes_tracks))
 
         result = {
             "tracks": [], "artists": [], "albums": [],
@@ -501,7 +502,7 @@ def search():
                     track_items = data.get("items", []) if isinstance(data, dict) else (data or [])
                     has_more = bool(data.get("has_more", False)) if isinstance(data, dict) else False
                     result["tracks"].extend(track_items)
-                    result["has_more"] = result["has_more"] or has_more
+                    result["has_more"] = False
                     if sid:
                         socketio.emit("search_partial", {
                             "section": "tracks", "data": track_items, "done": list(done_labels),
@@ -542,7 +543,7 @@ def search():
                     has_more = bool(data.get("has_more", False)) if isinstance(data, dict) else False
                     result["tracks"].extend(track_items)
                     result["source"] = "itunes"
-                    result["has_more"] = result["has_more"] or has_more
+                    result["has_more"] = False
                     if sid:
                         socketio.emit("search_partial", {
                             "section": "tracks", "data": track_items, "done": list(done_labels),

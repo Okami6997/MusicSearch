@@ -6,7 +6,7 @@ A web-based music search and download application. Search or paste any music pla
 
 ## Features
 
-- **Music Search** — Search by title, artist, or ISRC across Qobuz, iTunes, Deezer, and SoundCloud with concurrent async service fan-out; query-scoped incremental updates append incoming chunks as they arrive, the live track feed merges cross-service tracks (including YouTube/Deezer/SoundCloud) with dedupe, and infinite-scroll lazy loading continues loading additional pages as you scroll
+- **Music Search** — Search by title, artist, or ISRC across Qobuz, iTunes, Deezer, and SoundCloud with concurrent async service fan-out; each search runs in single-call mode (no API pagination), query-scoped incremental updates append incoming chunks as they arrive, and the live track feed merges cross-service tracks (including YouTube/Deezer/SoundCloud) with dedupe
 - **Search Source Toggles** — Show/hide result sections (Tracks, Artists, Albums, YouTube, Deezer, SoundCloud) using inline filter pills in the Search UI
 - **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
