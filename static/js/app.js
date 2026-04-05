@@ -1582,16 +1582,28 @@
         }
 
         player.src = url;
-        player.play();
-        btn.classList.add("playing");
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
-        _currentPreviewBtn = btn;
-
+        player.oncanplay = () => {
+            player.play().catch((err) => {
+                btn.classList.remove("playing");
+                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+                _currentPreviewBtn = null;
+                toast("Preview unavailable — try again later", "error");
+            });
+        };
+        player.onerror = () => {
+            btn.classList.remove("playing");
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+            _currentPreviewBtn = null;
+            toast("Preview unavailable — try again later", "error");
+        };
         player.onended = () => {
             btn.classList.remove("playing");
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
             _currentPreviewBtn = null;
         };
+        btn.classList.add("playing");
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+        _currentPreviewBtn = btn;
     };
 
     function previewBtn(previewUrl) {
