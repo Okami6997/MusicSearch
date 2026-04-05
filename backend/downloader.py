@@ -361,6 +361,18 @@ class DownloadManager:
     def _download(self, task: DownloadTask, links: dict, isrc: str,
                   progress_cb) -> str:
         # Lidarr-compatible layout: Artist / Album (Year) / track - Title
+        # Use resolved metadata from song.link if title not provided
+        resolved_title = links.get("title", "") if isinstance(links, dict) else ""
+        resolved_artist = links.get("artist", "") if isinstance(links, dict) else ""
+        resolved_album = links.get("album", "") if isinstance(links, dict) else ""
+
+        if not task.title and resolved_title:
+            task.title = resolved_title
+        if not task.artist and resolved_artist:
+            task.artist = resolved_artist
+        if not task.album and resolved_album:
+            task.album = resolved_album
+
         safe_artist = self._safe_name(task.artist or "Unknown Artist")
         safe_album = self._safe_name(task.album or "Unknown Album")
         year = (task.year or "").strip()

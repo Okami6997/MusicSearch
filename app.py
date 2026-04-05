@@ -203,7 +203,7 @@ def resolve_url():
         try:
             history.add_fetch({
                 "url": url, "type": parsed.get("type", "track"),
-                "name": url, "info": parsed.get("platform", ""),
+                "name": links.get("title") or url, "info": parsed.get("platform", ""),
             })
         except Exception:
             pass

@@ -92,6 +92,16 @@ class SongLinkClient:
     def get_all_urls(self, url: str, region: str = "") -> dict:
         """Get Tidal/Amazon/YouTube/Spotify/ISRC from any music URL."""
         links = self._resolve_by_url(url, region)
+        entities = links.get("entitiesByUniqueId", {})
+        song_title = ""
+        song_artist = ""
+        song_album = ""
+        for entity in entities.values():
+            if entity.get("isrc") or entity.get("title"):
+                song_title = entity.get("title", "")
+                song_artist = entity.get("artistName", "")
+                song_album = entity.get("albumName", "")
+                break
         return {
             "tidal_url": links.get("tidal_url", ""),
             "amazon_url": self._norm_amazon(links.get("amazon_url", "")),
@@ -100,6 +110,9 @@ class SongLinkClient:
             "spotify_url": links.get("spotify_url", ""),
             "soundcloud_url": links.get("soundcloud_url", ""),
             "isrc": links.get("isrc", ""),
+            "title": song_title,
+            "artist": song_artist,
+            "album": song_album,
         }
 
     def check_availability(self, url: str) -> dict:
@@ -112,6 +125,16 @@ class SongLinkClient:
         spotify = links.get("spotify_url", "")
         isrc = links.get("isrc", "")
         qobuz = self._check_qobuz(isrc) if isrc else False
+        entities_by_id = links.get("entitiesByUniqueId", {})
+        song_title = ""
+        song_artist = ""
+        song_album = ""
+        for entity in entities_by_id.values():
+            if entity.get("isrc") or entity.get("title"):
+                song_title = entity.get("title", "")
+                song_artist = entity.get("artistName", "")
+                song_album = entity.get("albumName", "")
+                break
 
         # Try to get ISRC from Deezer if not found
         if not isrc and deezer:
@@ -126,6 +149,8 @@ class SongLinkClient:
             "tidal_url": tidal, "amazon_url": amazon,
             "deezer_url": deezer, "youtube_url": youtube,
             "spotify_url": spotify, "isrc": isrc,
+            "title": song_title, "artist": song_artist, "album": song_album,
+            "entitiesByUniqueId": entities_by_id,
         }
 
     def get_isrc(self, url: str) -> str:
@@ -140,7 +165,7 @@ class SongLinkClient:
 
     def _resolve_by_url(self, url: str, region: str) -> dict:
         """Resolve via song.link API using any music URL."""
-        result = {"tidal_url": "", "amazon_url": "", "deezer_url": "", "isrc": ""}
+        result = {"tidal_url": "", "amazon_url": "", "deezer_url": "", "isrc": "", "entitiesByUniqueId": {}}
         api = (
             f"https://api.song.link/v1-alpha.1/links"
             f"?url={requests.utils.quote(url, safe='')}"
@@ -160,7 +185,8 @@ class SongLinkClient:
                 result["youtube_url"] = lbp.get("youtubeMusic", {}).get("url", "")
                 result["apple_url"] = lbp.get("appleMusic", {}).get("url", "")
                 result["soundcloud_url"] = lbp.get("soundcloud", {}).get("url", "")
-                for entity in data.get("entitiesByUniqueId", {}).values():
+                result["entitiesByUniqueId"] = data.get("entitiesByUniqueId", {})
+                for entity in result["entitiesByUniqueId"].values():
                     if entity.get("isrc"):
                         result["isrc"] = entity["isrc"]
                         break

@@ -702,29 +702,47 @@
         $("#platform-list").innerHTML = platforms.map((p) => {
             const avail = p.url || p.available;
             return `
-                <div class="platform-item ${avail ? 'available' : 'unavailable'}">
+                <div class="platform-item ${avail ? 'available' : 'unavailable'}" data-platform="${p.key}" data-url="${escAttr(p.url || '')}">
                     <span class="platform-name">${p.name}</span>
                     <span class="platform-status">${avail ? '✓' : '✕'}</span>
                 </div>`;
         }).join("");
 
+        // Add click handler for platform selection
+        $("#platform-list").querySelectorAll(".platform-item.available").forEach((el) => {
+            el.style.cursor = "pointer";
+            el.addEventListener("click", () => {
+                $("#platform-list").querySelectorAll(".platform-item").forEach((e) => e.style.outline = "");
+                el.style.outline = "2px solid var(--primary)";
+                el.style.outlineOffset = "2px";
+                window._selectedPlatform = el.dataset.platform;
+                window._selectedUrl = el.dataset.url;
+            });
+        });
+
         const isrc = data.isrc || "";
         const parsed = data.parsed || {};
+        const title = data.title || parsed.title || "";
+        const artist = data.artist || parsed.artist || "";
+        const album = data.album || "";
         const isPlaylist = parsed.type === "playlist" || /playlist/.test(url);
         let actionsHtml = '';
         if (isrc) {
             actionsHtml += `<div class="info-row"><strong>ISRC:</strong> ${esc(isrc)}</div>`;
+        }
+        if (title || artist) {
+            actionsHtml += `<div class="info-row"><strong>Track:</strong> ${esc(title)}</div>`;
+            actionsHtml += `<div class="info-row"><strong>Artist:</strong> ${esc(artist)}</div>`;
         }
         // Playlist download button
         if (isPlaylist) {
             const src = parsed.platform === "spotify" ? "spotify" : "apple_music";
             actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownloadPlaylist('${esc(url)}','${src}')">Download Playlist</button>`;
         } else {
-            // Single track download button
-            const dlUrl = data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
-            if (dlUrl || isrc) {
-                actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownload('${escJs(dlUrl)}','${escJs(isrc)}','','','','',0)">Download Track</button>`;
-            }
+            // Single track download button - use selected platform URL or fallbacks
+            const dlUrl = window._selectedUrl || data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
+            const downloadFn = `window.sfDownload('${escJs(dlUrl)}','${escJs(isrc)}','${escJs(title)}','${escJs(artist)}','${escJs(album)}','',0)`;
+            actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="${downloadFn}">Download Track</button>`;
         }
         $("#resolve-actions").innerHTML = actionsHtml;
     }
@@ -1694,6 +1712,12 @@
     function escJs(str) {
         // Safe for single-quoted JS string literals inside HTML attributes.
         return esc(str).replace(/&#39;/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "");
+    }
+
+    function escAttr(str) {
+        // Escape for double-quoted HTML attributes.
+        if (!str) return "";
+        return str.replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     function serviceBadge(name) {
