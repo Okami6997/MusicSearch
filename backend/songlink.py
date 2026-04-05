@@ -102,6 +102,25 @@ class SongLinkClient:
                 song_artist = entity.get("artistName", "")
                 song_album = entity.get("albumName", "")
                 break
+
+        misresolved = self._is_misresolved_as_album(url, links)
+        if misresolved:
+            # SongLink returned album-level data for a track URL.
+            # Correct the Amazon URL and clear all album-level links / metadata.
+            amazon_url = self._norm_amazon(url) if AMAZON_TRACK.search(url) else ""
+            return {
+                "tidal_url": "",
+                "amazon_url": amazon_url,
+                "deezer_url": "",
+                "youtube_url": links.get("youtube_url", ""),
+                "spotify_url": links.get("spotify_url", ""),
+                "soundcloud_url": links.get("soundcloud_url", ""),
+                "isrc": "",
+                "title": "",
+                "artist": "",
+                "album": "",
+            }
+
         return {
             "tidal_url": links.get("tidal_url", ""),
             "amazon_url": self._norm_amazon(links.get("amazon_url", "")),
@@ -115,9 +134,42 @@ class SongLinkClient:
             "album": song_album,
         }
 
-    def check_availability(self, url: str) -> dict:
+    def check_availability(self, url: str, original_url: str = "") -> dict:
         """Check which platforms have this track."""
+        _check_url = original_url or url
         links = self._resolve_by_url(url, "")
+        entities_by_id = links.get("entitiesByUniqueId", {})
+
+        # Ensure the original platform URL is always preserved even when
+        # SongLink fails (e.g. rate-limited) — the URL itself is still valid.
+        parsed = parse_music_url(_check_url)
+        _platform_key_map = {
+            "tidal": "tidal_url", "amazon": "amazon_url",
+            "deezer": "deezer_url", "spotify": "spotify_url",
+            "youtube": "youtube_url", "soundcloud": "soundcloud_url",
+        }
+        pk = _platform_key_map.get(parsed.get("platform", ""))
+        if pk and parsed.get("type") == "track" and not links.get(pk):
+            links[pk] = _check_url
+
+        misresolved = self._is_misresolved_as_album(_check_url, links)
+        if misresolved:
+            # SongLink resolved a track URL to album-level data.
+            # Return only the corrected Amazon track URL; clear all album-level links.
+            amazon = self._norm_amazon(_check_url) if AMAZON_TRACK.search(_check_url) else ""
+            youtube = links.get("youtube_url", "")
+            spotify = links.get("spotify_url", "")
+            return {
+                "tidal": False, "amazon": bool(amazon),
+                "qobuz": False, "deezer": False,
+                "youtube": bool(youtube), "spotify": bool(spotify),
+                "tidal_url": "", "amazon_url": amazon,
+                "deezer_url": "", "youtube_url": youtube,
+                "spotify_url": spotify, "isrc": "",
+                "title": "", "artist": "", "album": "",
+                "entitiesByUniqueId": entities_by_id,
+            }
+
         tidal = links.get("tidal_url", "")
         amazon = self._norm_amazon(links.get("amazon_url", ""))
         deezer = links.get("deezer_url", "")
@@ -125,7 +177,6 @@ class SongLinkClient:
         spotify = links.get("spotify_url", "")
         isrc = links.get("isrc", "")
         qobuz = self._check_qobuz(isrc) if isrc else False
-        entities_by_id = links.get("entitiesByUniqueId", {})
         song_title = ""
         song_artist = ""
         song_album = ""
@@ -224,6 +275,24 @@ class SongLinkClient:
         except Exception:
             pass
         return ""
+
+    @staticmethod
+    def _is_misresolved_as_album(url: str, links: dict) -> bool:
+        """Return True when a track URL was misresolved to album-level entities.
+
+        song.link sometimes maps an Amazon/Tidal/Deezer track URL to the parent
+        album rather than the individual track, resulting in all entities having
+        type 'album' and no ISRC being found.
+        """
+        input_is_track = bool(
+            AMAZON_TRACK.search(url) or TIDAL_TRACK.search(url) or DEEZER_TRACK.search(url)
+        )
+        if not input_is_track:
+            return False
+        if links.get("isrc"):
+            return False
+        entities = links.get("entitiesByUniqueId", {})
+        return bool(entities) and all(e.get("type") == "album" for e in entities.values())
 
     @staticmethod
     def _norm_amazon(url: str) -> str:

@@ -197,7 +197,7 @@ def resolve_url():
         return jsonify({"error": "Not a recognized music URL"}), 400
     try:
         parsed = parse_music_url(url)
-        links = songlink_client.check_availability(url)
+        links = songlink_client.check_availability(url, original_url=url)
         links["parsed"] = parsed
         # Save to fetch history
         try:
@@ -773,7 +773,7 @@ def availability():
     if not url:
         return jsonify({"error": "URL required"}), 400
     try:
-        data = songlink_client.check_availability(url)
+        data = songlink_client.check_availability(url, original_url=url)
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

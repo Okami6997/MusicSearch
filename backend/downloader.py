@@ -12,6 +12,7 @@ from threading import Lock, Thread
 from typing import Callable, Optional
 
 import requests as _req
+from mutagen import File as MutagenFile
 
 from .amazon import AmazonDownloader
 from .analysis import validate_download_duration
@@ -193,7 +194,25 @@ class DownloadManager:
                 if parsed["platform"] == "tidal" and parsed["type"] == "track":
                     links["tidal_url"] = task.url
                 elif parsed["platform"] == "amazon":
+                    # Always keep the original Amazon URL — SongLink may resolve a
+                    # track URL to an album URL causing wrong-track downloads.
                     links["amazon_url"] = task.url
+                    # add_track defaults title to the URL when none is provided,
+                    # so treat url-as-title the same as "no title".
+                    has_real_title = task.title and task.title != task.url
+                    if parsed["type"] == "track" and not has_real_title:
+                        try:
+                            ameta = self.amazon.fetch_track_metadata(task.url)
+                            # Use ameta values directly — task.title may be the
+                            # URL placeholder and should be overwritten.
+                            task.title = ameta.get("title", "") or task.title
+                            task.artist = ameta.get("artist", "") or task.artist
+                            task.album = ameta.get("album", "") or task.album
+                            task.year = ameta.get("year", "") or task.year
+                            if not isrc:
+                                isrc = ameta.get("isrc", "")
+                        except Exception:
+                            pass
                 elif parsed["platform"] == "youtube":
                     links["youtube_url"] = task.url
                 elif parsed["platform"] == "deezer" and parsed["type"] == "track":
@@ -202,6 +221,19 @@ class DownloadManager:
                     links["soundcloud_url"] = task.url
                 elif parsed["platform"] == "spotify" and parsed["type"] == "track":
                     links["spotify_url"] = task.url
+                    has_real_title = self._has_real_title(task)
+                    if not has_real_title:
+                        try:
+                            smeta = self.spotify.fetch_track_metadata(task.url)
+                            task.title = smeta.get("title", "") or task.title
+                            task.artist = smeta.get("artist", "") or task.artist
+                            task.year = smeta.get("year", "") or task.year
+                            if smeta.get("cover_url"):
+                                task.cover_url = task.cover_url or smeta["cover_url"]
+                            if smeta.get("duration_ms"):
+                                task.duration_ms = task.duration_ms or smeta["duration_ms"]
+                        except Exception:
+                            pass
                 elif parsed["platform"] == "apple_music":
                     apple_music_url = task.url
                 # Always try SongLink to get cross-platform links + ISRC (with cache)
@@ -213,13 +245,25 @@ class DownloadManager:
                         # Cache for 5 minutes
                         self._sl_cache[cache_key] = sl
                     links.setdefault("tidal_url", sl.get("tidal_url", ""))
-                    links.setdefault("amazon_url", sl.get("amazon_url", ""))
+                    # Do NOT use SongLink's amazon_url here — for Amazon track URLs,
+                    # SongLink can return the parent album URL instead of the track URL.
+                    # The original task.url was already set above and must be preserved.
+                    if not links.get("amazon_url"):
+                        links["amazon_url"] = sl.get("amazon_url", "")
                     links.setdefault("deezer_url", sl.get("deezer_url", ""))
                     links.setdefault("youtube_url", sl.get("youtube_url", ""))
                     links.setdefault("spotify_url", sl.get("spotify_url", ""))
                     links.setdefault("soundcloud_url", sl.get("soundcloud_url", ""))
                     if not isrc:
                         isrc = sl.get("isrc", "")
+                    # Only use SongLink title/artist when an ISRC was found — a missing
+                    # ISRC indicates SongLink resolved to an album entity rather than a
+                    # track, so the title would be the album name, not the track name.
+                    sl_isrc = sl.get("isrc", "")
+                    if sl_isrc and not task.title:
+                        task.title = task.title or sl.get("title", "")
+                        task.artist = task.artist or sl.get("artist", "")
+                        task.album = task.album or sl.get("album", "")
                 except Exception:
                     pass
             elif isrc:
@@ -358,6 +402,18 @@ class DownloadManager:
                 task.status = DownloadStatus.FAILED
                 self._notify(task)
 
+    @staticmethod
+    def _has_real_title(task: 'DownloadTask') -> bool:
+        """Return True if task.title contains an actual track name, not a URL placeholder."""
+        t = task.title.strip()
+        if not t:
+            return False
+        if t == task.url:
+            return False
+        if t.startswith(("http://", "https://")):
+            return False
+        return True
+
     def _download(self, task: DownloadTask, links: dict, isrc: str,
                   progress_cb) -> str:
         # Lidarr-compatible layout: Artist / Album (Year) / track - Title
@@ -366,8 +422,10 @@ class DownloadManager:
         resolved_artist = links.get("artist", "") if isinstance(links, dict) else ""
         resolved_album = links.get("album", "") if isinstance(links, dict) else ""
 
-        if not task.title and resolved_title:
+        has_real = self._has_real_title(task)
+        if not has_real and resolved_title:
             task.title = resolved_title
+            has_real = True
         if not task.artist and resolved_artist:
             task.artist = resolved_artist
         if not task.album and resolved_album:
@@ -377,7 +435,7 @@ class DownloadManager:
         safe_album = self._safe_name(task.album or "Unknown Album")
         year = (task.year or "").strip()
         album_folder = f"{safe_album} ({year})" if year else safe_album
-        safe_title = self._safe_name(task.title or task.url or task.isrc)
+        safe_title = self._safe_name(task.title if self._has_real_title(task) else (task.isrc or "track"))
         if task.track_number:
             filename = f"{task.track_number:02d} - {safe_title}.flac"
         else:
@@ -407,6 +465,9 @@ class DownloadManager:
                             pass
                         errors.append(f"{name}: {err_msg}")
                         continue
+                if not (self._has_real_title(task) and task.artist and task.album):
+                    if self._populate_task_from_embedded_metadata(path, task):
+                        path = self._move_to_task_path(path, task)
                 task.source = name
                 return path
             except Exception as e:
@@ -603,6 +664,82 @@ class DownloadManager:
         finally:
             if cover_path and os.path.exists(cover_path):
                 os.remove(cover_path)
+
+    def _populate_task_from_embedded_metadata(self, filepath: str, task: DownloadTask) -> bool:
+        try:
+            audio = MutagenFile(filepath)
+            tags = getattr(audio, "tags", None)
+            if not tags:
+                return False
+        except Exception:
+            return False
+
+        def first_tag(*names: str) -> str:
+            for name in names:
+                try:
+                    value = tags.get(name)
+                except Exception:
+                    # Some mutagen tag containers can raise for unknown keys.
+                    continue
+                if not value:
+                    continue
+                if isinstance(value, list):
+                    value = value[0]
+                if hasattr(value, "text"):
+                    text = getattr(value, "text", [])
+                    if text:
+                        value = text[0]
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", errors="ignore")
+                if value:
+                    return str(value).strip()
+            return ""
+
+        try:
+            changed = False
+            title = first_tag("TITLE", "title", "©nam")
+            artist = first_tag("ARTIST", "artist", "albumartist", "©ART")
+            album = first_tag("ALBUM", "album", "©alb")
+
+            # Overwrite title if current value is a URL placeholder
+            has_real = DownloadManager._has_real_title(task)
+            if title and not has_real:
+                task.title = title
+                changed = True
+            if artist and not task.artist:
+                task.artist = artist
+                changed = True
+            if album and not task.album:
+                task.album = album
+                changed = True
+            return changed
+        except Exception:
+            return False
+
+    def _move_to_task_path(self, filepath: str, task: DownloadTask) -> str:
+        ext = os.path.splitext(filepath)[1] or ".flac"
+        safe_artist = self._safe_name(task.artist or "Unknown Artist")
+        safe_album = self._safe_name(task.album or "Unknown Album")
+        year = (task.year or "").strip()
+        album_folder = f"{safe_album} ({year})" if year else safe_album
+        safe_title = self._safe_name(task.title or task.url or task.isrc or "track")
+        if task.track_number:
+            filename = f"{task.track_number:02d} - {safe_title}{ext}"
+        else:
+            filename = f"{safe_title}{ext}"
+        target_dir = os.path.join(self.output_dir, safe_artist, album_folder)
+        os.makedirs(target_dir, exist_ok=True)
+        target_path = os.path.join(target_dir, filename)
+        if os.path.abspath(target_path) == os.path.abspath(filepath):
+            return filepath
+        if os.path.exists(target_path):
+            base, ext = os.path.splitext(target_path)
+            counter = 1
+            while os.path.exists(f"{base} ({counter}){ext}"):
+                counter += 1
+            target_path = f"{base} ({counter}){ext}"
+        os.replace(filepath, target_path)
+        return target_path
 
     def _notify(self, task: DownloadTask):
         if self.on_progress:

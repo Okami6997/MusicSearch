@@ -1,5 +1,6 @@
 """Spotify downloader - downloads FLAC tracks via SpotiDownloader proxy API."""
 
+import json
 import os
 import re
 import time
@@ -67,6 +68,56 @@ class SpotifyDownloader:
             return m.group(1)
         # Fallback: take last path segment
         return spotify_url.split("/")[-1].split("?")[0].strip()
+
+    # ── Metadata ─────────────────────────────────────────────────
+
+    def fetch_track_metadata(self, spotify_url: str) -> dict:
+        """Fetch track metadata from Spotify's embed page (no auth required).
+
+        Returns dict with title, artist, album, year, cover_url, duration_ms.
+        """
+        track_id = self.extract_track_id(spotify_url)
+        resp = self.session.get(
+            f"https://open.spotify.com/embed/track/{track_id}",
+            headers={"User-Agent": self.UA},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        m = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+            resp.text,
+        )
+        if not m:
+            return {}
+        data = json.loads(m.group(1))
+        entity = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("state", {})
+            .get("data", {})
+            .get("entity", {})
+        )
+        if not entity:
+            return {}
+        artists = entity.get("artists", [])
+        artist = ", ".join(a.get("name", "") for a in artists) if artists else ""
+        release = entity.get("releaseDate", {}).get("isoString", "")
+        year = release[:4] if release else ""
+        images = entity.get("visualIdentity", {}).get("image", [])
+        cover_url = ""
+        for img in images:
+            if img.get("maxHeight", 0) >= 300:
+                cover_url = img.get("url", "")
+                break
+        if not cover_url and images:
+            cover_url = images[0].get("url", "")
+        return {
+            "title": entity.get("title") or entity.get("name", ""),
+            "artist": artist,
+            "year": year,
+            "cover_url": cover_url,
+            "duration_ms": entity.get("duration", 0),
+        }
 
     # ── Download ─────────────────────────────────────────────────
 

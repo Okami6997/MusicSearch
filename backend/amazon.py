@@ -1,8 +1,12 @@
 """Amazon Music downloader - downloads tracks via Amazon API proxy."""
 
+import json
 import os
 import re
 import subprocess
+import time
+import uuid
+from urllib.parse import urlparse
 
 import requests
 
@@ -37,6 +41,106 @@ class AmazonDownloader:
             raise ValueError("No stream URL from Amazon API")
         return {"stream_url": d["streamUrl"],
                 "decryption_key": d.get("decryptionKey", "")}
+
+    def fetch_track_metadata(self, amazon_url_or_asin: str) -> dict:
+        asin = self.extract_asin(amazon_url_or_asin)
+        parsed = urlparse(amazon_url_or_asin)
+        host = parsed.netloc or "music.amazon.com"
+        base_url = f"https://{host}"
+
+        cfg = self.session.get(f"{base_url}/config.json", timeout=20).json()
+        headers_payload = {
+            "x-amzn-authentication": json.dumps(
+                {
+                    "interface": "ClientAuthenticationInterface.v1_0.ClientTokenElement",
+                    "accessToken": cfg.get("accessToken", ""),
+                },
+                separators=(",", ":"),
+            ),
+            "x-amzn-device-model": "WEBPLAYER",
+            "x-amzn-device-width": "1920",
+            "x-amzn-device-family": "WebPlayer",
+            "x-amzn-device-id": cfg["deviceId"],
+            "x-amzn-user-agent": self.UA,
+            "x-amzn-session-id": cfg["sessionId"],
+            "x-amzn-device-height": "1080",
+            "x-amzn-request-id": str(uuid.uuid4()),
+            "x-amzn-device-language": cfg.get("displayLanguage", "en_IN"),
+            "x-amzn-currency-of-preference": "INR",
+            "x-amzn-os-version": "1.0",
+            "x-amzn-application-version": cfg.get("version", "1.0"),
+            "x-amzn-device-time-zone": "Asia/Calcutta",
+            "x-amzn-timestamp": str(int(time.time() * 1000)),
+            "x-amzn-csrf": json.dumps(
+                {
+                    "interface": "CSRFInterface.v1_0.CSRFHeaderElement",
+                    "token": cfg["csrf"]["token"],
+                    "timestamp": cfg["csrf"]["ts"],
+                    "rndNonce": cfg["csrf"]["rnd"],
+                },
+                separators=(",", ":"),
+            ),
+            "x-amzn-music-domain": host,
+            "x-amzn-referer": "",
+            "x-amzn-affiliate-tags": "",
+            "x-amzn-ref-marker": "",
+            "x-amzn-page-url": f"{base_url}/tracks/{asin}",
+            "x-amzn-weblab-id-overrides": "",
+            "x-amzn-video-player-token": "",
+            "x-amzn-feature-flags": "",
+            "x-amzn-has-profile-id": "",
+            "x-amzn-age-band": "",
+        }
+        payload = {
+            "id": asin,
+            "userHash": json.dumps({"level": "LIBRARY_MEMBER"}, separators=(",", ":")),
+            "headers": json.dumps(headers_payload, separators=(",", ":")),
+        }
+        resp = self.session.post(
+            "https://zaz.mesk.skill.music.a2z.com/api/cosmicTrack/displayCatalogTrack",
+            data=json.dumps(payload, separators=(",", ":")),
+            headers={
+                "Content-Type": "text/plain;charset=UTF-8",
+                "Referer": f"{base_url}/",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        template = (((data.get("methods") or [{}])[0]).get("template") or {})
+        result = {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "isrc": "",
+            "year": "",
+        }
+        seo_head = (template.get("templateData") or {}).get("seoHead") or {}
+        for script in seo_head.get("script", []):
+            inner = script.get("innerHTML", "")
+            if not inner:
+                continue
+            try:
+                schema = json.loads(inner)
+            except Exception:
+                continue
+            if schema.get("@type") != "MusicRecording":
+                continue
+            result["title"] = schema.get("name", "")
+            result["artist"] = (schema.get("byArtist") or {}).get("name", "")
+            result["album"] = (schema.get("inAlbum") or {}).get("name", "")
+            result["isrc"] = schema.get("isrcCode", "")
+            published = schema.get("datePublished", "")
+            if published:
+                result["year"] = published[:4]
+            break
+
+        if not result["title"]:
+            result["title"] = (template.get("headerText") or {}).get("text", "")
+        if not result["artist"]:
+            result["artist"] = template.get("headerPrimaryText", "") or template.get("headerPrimaryText2", "")
+        return result
 
     def download_track(self, amazon_url: str, output_dir: str,
                        filename: str = "", progress_cb=None) -> str:
