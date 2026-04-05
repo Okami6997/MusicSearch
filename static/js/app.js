@@ -82,6 +82,30 @@
         return el ? !!el.checked : true;
     }
 
+    function _dedupeKey(item, kind) {
+        if (!item) return "";
+        if (kind === "artists") {
+            return `${item.source || ""}|${item.id || ""}|${item.name || ""}`;
+        }
+        if (kind === "albums") {
+            return `${item.source || ""}|${item.id || ""}|${item.title || ""}|${item.artist || ""}`;
+        }
+        return `${item.source || ""}|${item.id || ""}|${item.url || ""}|${item.isrc || ""}|${item.title || ""}|${item.artist || ""}`;
+    }
+
+    function _mergeUnique(existing, incoming, kind) {
+        const out = Array.isArray(existing) ? [...existing] : [];
+        const seen = new Set(out.map((x) => _dedupeKey(x, kind)));
+        for (const row of (Array.isArray(incoming) ? incoming : [])) {
+            const key = _dedupeKey(row, kind);
+            if (!key || !seen.has(key)) {
+                out.push(row);
+                seen.add(key);
+            }
+        }
+        return out;
+    }
+
     function _rerenderSearchFromState() {
         const d = _latestSearchPayload || {};
         renderSearchResults(
@@ -131,7 +155,8 @@
         socket.on("search_done", onDone);
 
         try {
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0`);
+            const sid = socket.id || "";
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&offset=0&sid=${encodeURIComponent(sid)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             _latestSearchPayload = data;
@@ -167,27 +192,51 @@
 
     /** Apply incremental partial results from a SocketIO search_partial event. */
     function _applyPartialResults(payload) {
-        const { section, data, done, source, has_more } = payload;
-        // Build a minimal results object with whatever sections are done so far
-        const tracks    = section === "tracks"        ? data : (_searchState._tracks    || []);
-        const artists   = section === "artists"       ? data : (_searchState._artists   || []);
-        const albums    = section === "albums"         ? data : (_searchState._albums    || []);
-        const ytTracks  = section === "youtube_tracks" ? data : (_searchState._ytTracks  || []);
-        const dzTracks  = section === "deezer_tracks" ? data : (_searchState._dzTracks || []);
-        const scTracks  = section === "soundcloud_tracks" ? data : (_searchState._scTracks || []);
+        const { section, data, source, has_more, append } = payload;
+        const shouldAppend = !!append;
 
-        // Cache data for later sections
-        if (section === "tracks")        _searchState._tracks    = data;
-        if (section === "artists")       _searchState._artists   = data;
-        if (section === "albums")        _searchState._albums    = data;
-        if (section === "youtube_tracks") _searchState._ytTracks = data;
-        if (section === "deezer_tracks") _searchState._dzTracks = data;
-        if (section === "soundcloud_tracks") _searchState._scTracks = data;
+        if (section === "tracks") {
+            _searchState._tracks = shouldAppend
+                ? _mergeUnique(_searchState._tracks || [], data || [], "tracks")
+                : (data || []);
+        }
+        if (section === "artists") {
+            _searchState._artists = shouldAppend
+                ? _mergeUnique(_searchState._artists || [], data || [], "artists")
+                : (data || []);
+        }
+        if (section === "albums") {
+            _searchState._albums = shouldAppend
+                ? _mergeUnique(_searchState._albums || [], data || [], "albums")
+                : (data || []);
+        }
+        if (section === "youtube_tracks") {
+            _searchState._ytTracks = shouldAppend
+                ? _mergeUnique(_searchState._ytTracks || [], data || [], "tracks")
+                : (data || []);
+        }
+        if (section === "deezer_tracks") {
+            _searchState._dzTracks = shouldAppend
+                ? _mergeUnique(_searchState._dzTracks || [], data || [], "tracks")
+                : (data || []);
+        }
+        if (section === "soundcloud_tracks") {
+            _searchState._scTracks = shouldAppend
+                ? _mergeUnique(_searchState._scTracks || [], data || [], "tracks")
+                : (data || []);
+        }
+
+        const tracks = _searchState._tracks || [];
+        const artists = _searchState._artists || [];
+        const albums = _searchState._albums || [];
+        const ytTracks = _searchState._ytTracks || [];
+        const dzTracks = _searchState._dzTracks || [];
+        const scTracks = _searchState._scTracks || [];
 
         // Update pagination state if tracks section arrived
         if (section === "tracks") {
             searchPagination.hasMore = !!has_more;
-            searchPagination.offset = (data || []).length;
+            searchPagination.offset = tracks.length;
             if (has_more) {
                 // Inject sentinel div if not already present
                 let sentinel = document.getElementById("search-tracks-sentinel");
@@ -247,21 +296,21 @@
         // Artists — show data or loading placeholder
         if (visibleArtists.length) {
             html += _renderArtistsSection(visibleArtists, searchSource);
-        } else if (_isSectionEnabled("artists") && !_searchState.doneSections.has("qobuz_artists") && !_searchState.doneSections.has("itunes_artists")) {
+        } else if (_isSectionEnabled("artists") && !_searchState.doneSections.has("artists")) {
             html += '<div class="results-section"><h3 class="results-heading">Artists</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
         }
 
         // Albums
         if (visibleAlbums.length) {
             html += _renderAlbumsSection(visibleAlbums, searchSource);
-        } else if (_isSectionEnabled("albums") && !_searchState.doneSections.has("qobuz_albums") && !_searchState.doneSections.has("itunes_albums")) {
+        } else if (_isSectionEnabled("albums") && !_searchState.doneSections.has("albums")) {
             html += '<div class="results-section"><h3 class="results-heading">Albums</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
         }
 
         // Tracks
         if (visibleTracks.length) {
             html += _renderTracksSection(visibleTracks, searchSource);
-        } else if (_isSectionEnabled("tracks") && !_searchState.doneSections.has("qobuz_tracks") && !_searchState.doneSections.has("itunes_tracks")) {
+        } else if (_isSectionEnabled("tracks") && !_searchState.doneSections.has("tracks")) {
             html += '<div class="results-section"><h3 class="results-heading">Tracks</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
         }
 
@@ -396,7 +445,8 @@
         const sentinel = $('#search-tracks-sentinel');
         if (sentinel) sentinel.textContent = 'Loading more\u2026';
         try {
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(searchPagination.q)}&offset=${searchPagination.offset}`);
+            const sid = socket.id || "";
+            const resp = await fetch(`/api/search?q=${encodeURIComponent(searchPagination.q)}&offset=${searchPagination.offset}&sid=${encodeURIComponent(sid)}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             const newTracks = data.tracks || [];
