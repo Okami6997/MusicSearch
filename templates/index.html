@@ -45,15 +45,17 @@
                 <div class="tab-bar">
                     <button class="tab active" data-tab="search-query">Search</button>
                     <button class="tab" data-tab="search-url">Paste URL</button>
+                    <div id="search-filters" class="search-filters" aria-label="Search result filters">
+                        <button id="btn-search-filters" class="btn-ghost" type="button" aria-label="Search filters">
+                            <img src="/static/img/filter-icon.svg" width="16" height="16" alt="Filters">
+                        </button>
+                        <span id="search-filter-summary" class="search-filters-label">All sections and services</span>
+                    </div>
                 </div>
                 <div id="tab-search-query" class="tab-content active">
                     <div class="search-bar">
                         <input type="text" id="search-input" placeholder="Search for songs by title, artist, or ISRC..." autocomplete="off">
                         <button id="btn-search" class="btn-primary">Search</button>
-                    </div>
-                    <div id="search-filters" class="search-filters" aria-label="Search result filters">
-                        <button id="btn-search-filters" class="btn-ghost" type="button">Filters</button>
-                        <span id="search-filter-summary" class="search-filters-label">All sections and services</span>
                     </div>
                 </div>
                 <div id="tab-search-url" class="tab-content">

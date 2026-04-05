@@ -59,7 +59,7 @@ input, select { font: inherit; color: inherit; }
 .main { max-width: 960px; margin: 0 auto; padding: 24px; }
 
 /* ── Tabs ────────────────────────────────────────────────────── */
-.tab-bar { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab-bar { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
 .tab {
     padding: 8px 16px; border-radius: var(--radius); font-size: 14px; font-weight: 500;
     color: var(--text-muted); transition: all var(--transition);
@@ -83,6 +83,14 @@ input, select { font: inherit; color: inherit; }
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+}
+.tab-bar .search-filters {
+    margin-top: 0;
+    margin-left: auto;
+    flex-wrap: nowrap;
+}
+.tab-bar .search-filter-summary {
+    white-space: nowrap;
 }
 .search-filters-label {
     font-size: 12px;
@@ -456,6 +464,24 @@ input, select { font: inherit; color: inherit; }
 
     .search-filters {
         gap: 6px;
+    }
+
+    .tab-bar .search-filters {
+        margin-left: auto;
+        max-width: 50%;
+        overflow: hidden;
+    }
+
+    .tab-bar #btn-search-filters {
+        width: auto;
+        padding: 8px 12px;
+        flex-shrink: 0;
+    }
+
+    #search-filter-summary {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .search-filter-pill {
