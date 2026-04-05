@@ -61,6 +61,46 @@ class YouTubeDownloader:
 
         Uses YouTube Music's search page — no API key required.
         """
+        # Most reliable path: use yt_dlp's search extractor if available.
+        # It is resilient to frequent YouTube HTML structure changes.
+        try:
+            from yt_dlp import YoutubeDL
+
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "extract_flat": True,
+                "noplaylist": True,
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+
+            entries = (info or {}).get("entries", []) or []
+            out = []
+            seen = set()
+            for e in entries:
+                vid = (e or {}).get("id", "")
+                if not vid or vid in seen:
+                    continue
+                seen.add(vid)
+                out.append({
+                    "id": vid,
+                    "title": (e or {}).get("title", ""),
+                    "artist": (e or {}).get("uploader", "") or (e or {}).get("channel", ""),
+                    "album": "",
+                    "cover_url": (e or {}).get("thumbnail", "") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                    "duration_ms": int(((e or {}).get("duration") or 0) * 1000),
+                    "url": f"https://music.youtube.com/watch?v={vid}",
+                })
+                if len(out) >= limit:
+                    break
+
+            if out:
+                return out
+        except Exception as e:
+            print(f"[YouTube Music] yt_dlp search error: {e}")
+
         search_url = (
             f"https://music.youtube.com/search?q={quote(query)}"
         )
