@@ -1,5 +1,6 @@
 """SongsFetch - Flask web application for music search and download."""
 
+import importlib.metadata
 import os
 import time
 import uuid
@@ -1310,6 +1311,24 @@ def history_operations():
 def history_operations_clear():
     history.clear_operations()
     return jsonify({"ok": True})
+
+
+def _check_for_updates():
+    package_name = "songsfetch"
+    try:
+        current_version = importlib.metadata.version(package_name)
+        resp = http_requests.get(f"https://pypi.org/pypi/{package_name}/json", timeout=2)
+        if resp.status_code == 200:
+            latest_version = resp.json()["info"]["version"]
+            return {"current": current_version, "latest": latest_version, "update_available": current_version != latest_version}
+    except Exception:
+        pass
+    return {"update_available": False}
+
+
+@app.route("/api/check-update", methods=["GET"])
+def check_update():
+    return jsonify(_check_for_updates())
 
 
 # ── Settings ─────────────────────────────────────────────────

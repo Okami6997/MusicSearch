@@ -1582,6 +1582,32 @@
     $("#btn-close-settings").addEventListener("click", () => settingsModal.classList.add("hidden"));
     settingsModal.querySelector(".modal-overlay").addEventListener("click", () => settingsModal.classList.add("hidden"));
 
+    // ── Update Check ──────────────────────────────────────────
+    $("#btn-check-update").addEventListener("click", async () => {
+        try {
+            const resp = await fetch("/api/check-update");
+            const data = await resp.json();
+            if (data.update_available) {
+                const width = 68;
+                const lines = [
+                    "",
+                    ` ╭${"─".repeat(width - 2)}╮`,
+                    ` │  NEW VERSION AVAILABLE! (${data.current} -> ${data.latest})${" ".repeat(Math.max(0, width - 2 - 32 - data.current.length - data.latest.length))}│`,
+                    ` ├${"─".repeat(width - 2)}┤`,
+                    ` │  Module: pip install -U songsfetch${" ".repeat(Math.max(0, width - 2 - 30))}│`,
+                    ` │  App:    https://github.com/ShuShuzinhuu/SpotiFLAC-Module-Version${" ".repeat(Math.max(0, width - 2 - 56))}│`,
+                    ` ╰${"─".repeat(width - 2)}╯`,
+                    ""
+                ];
+                alert(lines.join("\n"));
+            } else {
+                alert("You are on the latest version!");
+            }
+        } catch (e) {
+            alert("Could not check for updates.");
+        }
+    });
+
     $("#btn-save-settings").addEventListener("click", async () => {
         try {
             await fetch("/api/settings", {
