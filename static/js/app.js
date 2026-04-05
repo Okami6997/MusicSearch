@@ -1569,41 +1569,50 @@
         // If same track is playing, pause it
         if (_currentPreviewBtn === btn && !player.paused) {
             player.pause();
-            btn.classList.remove("playing");
+            btn.classList.remove("playing", "loading");
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
             _currentPreviewBtn = null;
             return;
         }
 
-        // Stop previous
-        if (_currentPreviewBtn) {
-            _currentPreviewBtn.classList.remove("playing");
+        // Stop previous track
+        if (_currentPreviewBtn && _currentPreviewBtn !== btn) {
+            _currentPreviewBtn.classList.remove("playing", "loading");
             _currentPreviewBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
         }
 
+        // Show loading state while buffering
+        btn.classList.remove("playing");
+        btn.classList.add("loading");
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="20" stroke-dashoffset="10"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/></circle></svg>';
+        _currentPreviewBtn = btn;
         player.src = url;
+
         player.oncanplay = () => {
-            player.play().catch((err) => {
-                btn.classList.remove("playing");
+            player.play().then(() => {
+                btn.classList.remove("loading");
+                btn.classList.add("playing");
+                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+            }).catch(() => {
+                btn.classList.remove("loading", "playing");
                 btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
                 _currentPreviewBtn = null;
                 toast("Preview unavailable — try again later", "error");
             });
         };
+
         player.onerror = () => {
-            btn.classList.remove("playing");
+            btn.classList.remove("loading", "playing");
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
             _currentPreviewBtn = null;
             toast("Preview unavailable — try again later", "error");
         };
+
         player.onended = () => {
-            btn.classList.remove("playing");
+            btn.classList.remove("loading", "playing");
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
             _currentPreviewBtn = null;
         };
-        btn.classList.add("playing");
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
-        _currentPreviewBtn = btn;
     };
 
     function previewBtn(previewUrl) {
