@@ -19,7 +19,7 @@ MUSIC_URL_PATTERNS = [
     re.compile(r"open\.spotify\.com/(track|album|playlist)/([a-zA-Z0-9]+)"),
     re.compile(r"spotify:(track|album|playlist):([a-zA-Z0-9]+)"),
     re.compile(r"tidal\.com.*?/(track|album|playlist)/(\d+)"),
-    re.compile(r"music\.amazon\..+?/(tracks|albums)/(B[0-9A-Z]{9})"),
+    re.compile(r"music\.amazon\..+?/(tracks|albums|playlists|playlists)/(B[0-9A-Z]{9})"),
     re.compile(r"deezer\.com.*?/(track|album|playlist)/(\d+)"),
     re.compile(r"music\.apple\.com/.+?/(album|playlist|song)/"),
     re.compile(r"itunes\.apple\.com/.+?/id\d+"),
@@ -49,6 +49,12 @@ def parse_music_url(url: str) -> dict:
         m = re.search(r"/albums/([A-Z0-9]{10})", url)
         if m:
             return {"platform": "amazon", "type": "album", "id": m.group(1)}
+        m = re.search(r"/playlists/([A-Z0-9]{10})", url)
+        if m:
+            return {"platform": "amazon", "type": "playlist", "id": m.group(1)}
+        m = re.search(r"/playlists/([A-Z0-9]{10})", url)
+        if m:
+            return {"platform": "amazon", "type": "playlist", "id": m.group(1)}
     if "deezer.com" in url:
         m = re.search(r"deezer\.com.*?/(track|album|playlist)/(\d+)", url)
         if m:
@@ -58,13 +64,16 @@ def parse_music_url(url: str) -> dict:
         if m:
             return {"platform": "qobuz", "type": m.group(1), "id": m.group(2)}
     if "youtube.com" in url or "youtu.be" in url:
-        # Album / playlist URLs (music.youtube.com/playlist?list=… or /browse/MPREb_…)
-        m = re.search(r"music\.youtube\.com/playlist\?list=([A-Za-z0-9_-]+)", url)
-        if m:
-            return {"platform": "youtube", "type": "album", "id": m.group(1)}
+        # Album URLs: /browse/MPREb_...
         m = re.search(r"music\.youtube\.com/browse/(MPREb_[A-Za-z0-9_-]+)", url)
         if m:
             return {"platform": "youtube", "type": "album", "id": m.group(1)}
+        # Playlist/album URLs: /playlist?list=...
+        m = re.search(r"music\.youtube\.com/playlist\?list=([A-Za-z0-9_-]+)", url)
+        if m:
+            list_id = m.group(1)
+            p_type = "album" if list_id.startswith("OLAK") else "playlist"
+            return {"platform": "youtube", "type": p_type, "id": list_id}
         # Single video
         m = re.search(r"(?:v=|/v/|youtu\.be/|/embed/)([a-zA-Z0-9_-]{11})", url)
         if m:

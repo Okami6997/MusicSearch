@@ -9,6 +9,7 @@ A web-based music search and download application. Search or paste any music pla
 - **Music Search** — Search by title, artist, or ISRC across Qobuz, iTunes, Deezer, and SoundCloud with concurrent async service fan-out; each search runs in single-call mode (no API pagination), query-scoped incremental updates append incoming chunks as they arrive, and the live track feed merges cross-service tracks (including YouTube Music/Deezer/SoundCloud) with dedupe
 - **Search Source Toggles** — Show/hide result sections (Tracks, Artists, Albums, YouTube, Deezer, SoundCloud) using inline filter pills in the Search UI
 - **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
+- **Album & Playlist Expansion** — Paste an album or playlist URL from Spotify, YouTube Music, or Amazon Music and expand it into individual tracks with a single-click "Download All" batch action
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
 - **Qobuz/Deezer Resolver Fallbacks** — Download resolvers use multiple provider endpoints with quality fallback for more resilient FLAC retrieval when a single upstream API is unavailable
 - **Lossless Audio** — FLAC (16-bit and 24-bit Hi-Res) from Tidal/Qobuz/Amazon; MP3 320kbps via yt-dlp from YouTube Music
@@ -81,6 +82,10 @@ Settings are available via the web UI (gear icon):
 | GET | `/api/musicbrainz?isrc=...` | Look up genre/label/year by ISRC |
 | POST | `/api/download` | Download a track (url or isrc) |
 | POST | `/api/download/batch` | Download multiple tracks |
+| GET | `/api/resolve/album?url=...` | Expand album URL into track list |
+| GET | `/api/resolve/playlist?url=...` | Expand playlist URL into track list |
+| POST | `/api/download/album` | Download all tracks from an album |
+| POST | `/api/download/playlist` | Download all tracks from a playlist |
 | GET | `/api/queue` | Get download queue |
 | POST | `/api/queue/clear` | Clear completed downloads |
 | POST | `/api/analysis` | Analyze audio file metadata |

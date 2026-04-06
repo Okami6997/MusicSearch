@@ -295,6 +295,34 @@ def resolve_album():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/resolve/playlist", methods=["GET"])
+def resolve_playlist():
+    """Expand a playlist URL into individual tracks."""
+    url = request.args.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "URL required"}), 400
+    parsed = parse_music_url(url)
+    platform = parsed.get("platform", "")
+
+    tracks: list[dict] = []
+    try:
+        if platform == "spotify":
+            from backend.spotify import SpotifyDownloader
+            tracks = SpotifyDownloader().expand_playlist(url)
+        elif platform == "youtube":
+            from backend.youtube import YouTubeDownloader
+            tracks = YouTubeDownloader().expand_playlist(url)
+        elif platform == "amazon":
+            # Amazon playlists are not publicly expandable without auth
+            return jsonify({"error": "Amazon playlist expansion is not supported yet"}), 400
+
+        if not tracks:
+            return jsonify({"error": f"Could not expand playlist for {platform}"}), 404
+        return jsonify({"tracks": tracks, "count": len(tracks), "platform": platform})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/preview", methods=["GET"])
 def proxy_preview():
     """Proxy audio preview URLs to bypass CORS restrictions.
@@ -1210,6 +1238,35 @@ def download_playlist():
             return jsonify({"task_ids": task_ids, "count": len(task_ids)})
         except Exception as e:
             return jsonify({"error": f"Spotify playlist fetch failed: {str(e)}"}), 500
+
+    if source == "youtube":
+        try:
+            from backend.youtube import YouTubeDownloader
+            yt = YouTubeDownloader()
+            tracks = yt.expand_playlist(playlist_url)
+            if not tracks:
+                return jsonify({"error": "Could not retrieve YouTube playlist tracks."}), 404
+
+            for idx, t in enumerate(tracks):
+                task_id = download_manager.add_track(
+                    url=t.get("url", ""),
+                    title=t.get("title", ""),
+                    artist=t.get("artist", ""),
+                    album=t.get("album", ""),
+                    cover_url=t.get("cover_url", ""),
+                    duration_ms=int(t.get("duration_ms", 0)),
+                    track_number=int(t.get("track_number", 0) or 0),
+                    total_tracks=int(t.get("total_tracks", 0) or 0),
+                    disc_number=1,
+                    total_discs=1,
+                    year=str(t.get("year", ""))[:4],
+                    batch_id=playlist_batch_id,
+                    batch_seq=idx,
+                )
+                task_ids.append(task_id)
+            return jsonify({"task_ids": task_ids, "count": len(task_ids)})
+        except Exception as e:
+            return jsonify({"error": f"YouTube playlist fetch failed: {str(e)}"}), 500
 
     return jsonify({"error": f"Playlist download not supported for source: {source}"}), 400
 

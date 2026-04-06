@@ -394,6 +394,13 @@ class YouTubeDownloader:
             })
         return tracks
 
+    def expand_playlist(self, url_or_id: str) -> list[dict]:
+        """Expand a YouTube Music playlist URL into individual tracks.
+
+        Delegates to expand_album since yt-dlp handles both identically.
+        """
+        return self.expand_album(url_or_id)
+
     # ── Download APIs ────────────────────────────────────────────
 
     def _download_with_ytdlp(self, video_id: str, output_path: str,

@@ -283,22 +283,15 @@ class SpotifyDownloader:
             return []
 
     def expand_playlist(self, spotify_url_or_id: str) -> list[dict]:
-        """Expand a Spotify playlist URL into individual track records.
-        
-        Spotify's public playlist API doesn't require authentication for
-        some endpoints. We use the embed API and web scraping to extract
-        track data. For full playlist content, authentication would be needed.
-        """
+        """Expand a Spotify playlist URL into individual track records via embed page."""
         import re
-        # Extract playlist ID from URL
         if "/playlist/" in str(spotify_url_or_id):
             m = re.search(r"/playlist/([a-zA-Z0-9]+)", str(spotify_url_or_id))
             playlist_id = m.group(1) if m else str(spotify_url_or_id)
         else:
             playlist_id = str(spotify_url_or_id)
-        
+
         try:
-            # Try the embed endpoint which returns track data without auth
             resp = self.session.get(
                 f"https://open.spotify.com/embed/playlist/{playlist_id}",
                 headers={"User-Agent": self.UA},
@@ -306,49 +299,69 @@ class SpotifyDownloader:
             )
             if resp.status_code != 200:
                 return []
-            
-            import json
-            data = resp.json()
-            
-            # Extract tracks from the embed response
+            m = re.search(
+                r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+                resp.text,
+            )
+            if not m:
+                return []
+            data = json.loads(m.group(1))
+            entity = (
+                data.get("props", {})
+                .get("pageProps", {})
+                .get("state", {})
+                .get("data", {})
+                .get("entity", {})
+            )
+            if not entity:
+                return []
+
+            playlist_name = entity.get("title") or entity.get("name", "")
+            cover_art = entity.get("coverArt", {})
+            cover_url = ""
+            if isinstance(cover_art, dict):
+                sources = cover_art.get("sources", [])
+                for src in sources:
+                    if (src.get("height") or 0) >= 300:
+                        cover_url = src.get("url", "")
+                        break
+                if not cover_url and sources:
+                    cover_url = sources[0].get("url", "")
+            # Fallback to visualIdentity if coverArt didn't have sources
+            if not cover_url:
+                images = entity.get("visualIdentity", {}).get("image", [])
+                for img in images:
+                    if (img.get("maxHeight") or 0) >= 300:
+                        cover_url = img.get("url", "")
+                        break
+                if not cover_url and images:
+                    cover_url = images[0].get("url", "")
+
+            track_list = entity.get("trackList", [])
             tracks = []
-            track_data = data.get("tracks", {}).get("tracks", data.get("tracks", []))
-            
-            for item in track_data:
-                if isinstance(item, dict):
-                    track = item.get("track") or item
-                    if not track.get("id"):
-                        continue
-                    
-                    # Get album art
-                    album = track.get("album", {})
-                    images = album.get("images", [])
-                    cover_url = images[0].get("url", "") if images else ""
-                    
-                    # Get duration in ms
-                    duration_ms = track.get("duration_ms", 0)
-                    
-                    # Get artists
-                    artists = track.get("artists", [])
-                    artist_name = ", ".join(a.get("name", "") for a in artists)
-                    
-                    tracks.append({
-                        "id": track.get("id"),
-                        "title": track.get("name", ""),
-                        "artist": artist_name,
-                        "album": album.get("name", ""),
-                        "cover_url": cover_url,
-                        "duration_ms": duration_ms,
-                        "track_number": track.get("track_number", 0),
-                        "disc_number": track.get("disc_number", 1),
-                        "total_tracks": track.get("total_track_count", album.get("total_tracks", 0)),
-                        "year": (track.get("album", {}).get("release_date", "")[:4]) if track.get("album", {}).get("release_date") else "",
-                        "isrc": "",
-                        "url": f"https://open.spotify.com/track/{track.get('id')}",
-                        "source": "spotify",
-                        "service": "Spotify",
-                    })
-            
+            for idx, t in enumerate(track_list):
+                artists = t.get("artists", [])
+                if artists:
+                    artist = ", ".join(a.get("name", "") for a in artists)
+                else:
+                    artist = t.get("subtitle", "")
+                uri = t.get("uri", "")
+                track_id = uri.split(":")[-1] if "track:" in uri else ""
+                track_url = f"https://open.spotify.com/track/{track_id}" if track_id else ""
+                tracks.append({
+                    "title": t.get("title") or t.get("name", ""),
+                    "artist": artist,
+                    "album": "",
+                    "cover_url": cover_url,
+                    "duration_ms": t.get("duration", 0),
+                    "track_number": idx + 1,
+                    "total_tracks": len(track_list),
+                    "disc_number": 1,
+                    "year": "",
+                    "isrc": "",
+                    "url": track_url,
+                    "source": "spotify",
+                })
             return tracks
         except Exception:
             return []

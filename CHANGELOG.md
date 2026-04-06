@@ -2,10 +2,13 @@
 
 ## v1.3.0 (Unreleased)
 
-This release adds parallel album/playlist downloads with in-order UI completion, auto-resample to Hi-Res FLAC after every download, 30s DRM-free preview playback in search results, and a Docker DNS fix for search latency.
+This release adds album and playlist expansion for Spotify/YouTube Music/Amazon Music, parallel album/playlist downloads with in-order UI completion, auto-resample to Hi-Res FLAC after every download, 30s DRM-free preview playback in search results, and a Docker DNS fix for search latency.
 
 ### New Features
 
+- **Album expansion** — Paste any album URL from Spotify, YouTube Music, or Amazon Music to expand it into a track listing with individual download buttons and a "Download All" batch action. Spotify and Amazon use embed-page / SongLink→Deezer API chains; YouTube Music uses yt-dlp flat extraction.
+- **Playlist expansion** — Paste any playlist URL from Spotify or YouTube Music to expand it into a track listing. Spotify playlists are expanded via the `__NEXT_DATA__` embed page; YouTube playlists use yt-dlp `extract_flat` mode. Amazon Music playlists are recognized but not expandable (no public API).
+- **URL type detection** — `parse_music_url()` now distinguishes track, album, and playlist URL types across all supported platforms. YouTube Music playlist URLs are classified as album (`OLAK*` prefix) or playlist (`PL*`, `RD*`, etc.) based on the list ID prefix. Amazon Music `/playlists/` URLs are now recognized.
 - **Download: Auto-resample to 192kHz/24-bit Hi-Res FLAC** — After every successful download a new `resample_inplace()` step runs before metadata embedding. Non-FLAC files (MP3, M4A) are converted to FLAC and the originals removed. Files already at the target spec are skipped. Controlled via the new "Auto-resample to 192kHz/24-bit" toggle in Settings.
 - **Download: Parallel album/playlist download with ordered UI completion** — Album and playlist tracks now download concurrently across all 5 workers. Each batch receives a `batch_id`; the `_flush_batch_completion()` helper buffers finished tasks and emits UI notifications strictly in track order, so the queue display always shows tracks completing in sequence.
 - **Search: 30s DRM-free preview playback** — Search results that include a preview URL (Deezer tracks use the `preview` field; iTunes tracks use `previewUrl`) now show a circular play/pause button. A single shared `<audio>` element handles playback — starting a new preview automatically stops the previous one.
@@ -19,15 +22,19 @@ This release adds parallel album/playlist downloads with in-order UI completion,
 
 ### Files Changed
 
+- `app.py` — Added `/api/resolve/album` and `/api/resolve/playlist` endpoints; added `/api/download/album` endpoint with handlers for Spotify, YouTube, Amazon, Qobuz, Apple Music; added YouTube handler to `/api/download/playlist`; passes `batch_id` and `batch_seq` for all batch/album/playlist download endpoints
+- `backend/spotify.py` — Rewrote `expand_playlist()` using `__NEXT_DATA__` from embed page (same approach as `expand_album`); handles `subtitle` (string) artist field and `coverArt.sources[].height` being `None`
+- `backend/youtube.py` — Added `expand_album()` using yt-dlp `extract_flat` mode; added `expand_playlist()` as alias since yt-dlp handles both identically
+- `backend/amazon.py` — Added `expand_album()` via SongLink→Deezer API chain
+- `backend/songlink.py` — Added Amazon playlist URL pattern (`/playlists/B...`); YouTube playlist URLs now differentiated: `OLAK*` → album, others → playlist
 - `backend/downloader.py` — Added `RESAMPLING` status; `auto_resample` flag; calls `resample_inplace()` between download and embedding; added `batch_id`/`batch_seq` fields and `_flush_batch_completion()` to buffer out-of-order completions
 - `backend/resample.py` — Added `resample_inplace()` function for single-file in-place resample/conversion
 - `backend/deezer.py` — Exposed `preview_url` field from Deezer API response
-- `static/js/app.js` — Added `previewBtn()` helper and `sfTogglePreview()` play/pause handler; added `resampling` status label; wired `auto_resample` setting to UI toggle
+- `static/js/app.js` — Added `renderAlbumResults()` and `renderPlaylistResults()` for track-listing UI with individual download and "Download All" batch buttons; `doResolve()` detects album/playlist types and routes to expansion endpoints; added `previewBtn()` helper and `sfTogglePreview()` play/pause handler; added `resampling` status label; wired `auto_resample` setting to UI toggle
 - `static/css/style.css` — Added `.btn-preview` and `.btn-preview.playing` styles
 - `templates/index.html` — Added `<audio id="preview-player">` element; added Auto-resample checkbox in Settings
 - `Dockerfile` — Added `EVENTLET_NO_GREENDNS=yes` environment variable
 - `docker-compose.yml` — Added `EVENTLET_NO_GREENDNS=yes` env var and external DNS servers
-- `app.py` — Passes `batch_id` and `batch_seq` for all batch/album/playlist download endpoints
 
 ---
 

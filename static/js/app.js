@@ -678,33 +678,44 @@
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             const parsed = data.parsed || {};
-            console.log("[doResolve] parsed:", JSON.stringify(parsed));
             // If the URL resolves to an album, expand it into tracks
             if (parsed.type === "album") {
-                console.log("[doResolve] detected album, calling /api/resolve/album");
                 try {
                     const albumResp = await fetch(`/api/resolve/album?url=${encodeURIComponent(url)}`);
                     const albumData = await albumResp.json();
-                    console.log("[doResolve] albumData tracks:", albumData.tracks ? albumData.tracks.length : 0, "error:", albumData.error);
                     if (albumData.tracks && albumData.tracks.length > 0) {
                         renderAlbumResults(url, albumData, data);
                         return;
                     }
-                    // Album expansion returned no tracks - show error but don't fall through to track download
                     toast(albumData.error || "Could not expand album tracks", "error");
                     showEmpty();
                     return;
                 } catch (albumErr) {
-                    console.error("[doResolve] album expansion error:", albumErr);
                     toast("Failed to expand album: " + (albumErr.message || "unknown error"), "error");
                     showEmpty();
                     return;
                 }
             }
-            console.log("[doResolve] falling through to renderResolveResults");
+            // If the URL resolves to a playlist, expand it into tracks
+            if (parsed.type === "playlist") {
+                try {
+                    const plResp = await fetch(`/api/resolve/playlist?url=${encodeURIComponent(url)}`);
+                    const plData = await plResp.json();
+                    if (plData.tracks && plData.tracks.length > 0) {
+                        renderPlaylistResults(url, plData, data);
+                        return;
+                    }
+                    toast(plData.error || "Could not expand playlist tracks", "error");
+                    showEmpty();
+                    return;
+                } catch (plErr) {
+                    toast("Failed to expand playlist: " + (plErr.message || "unknown error"), "error");
+                    showEmpty();
+                    return;
+                }
+            }
             renderResolveResults(url, data);
         } catch (e) {
-            console.error("[doResolve] outer error:", e);
             toast(e.message, "error");
             showEmpty();
         }
@@ -754,6 +765,51 @@
                 const data = await resp.json();
                 if (data.error) throw new Error(data.error);
                 toast(`Queued ${tks.length} album tracks`, "success");
+                updateQueueBadge();
+            } catch (e) {
+                toast(e.message, "error");
+            }
+        };
+    }
+
+    function renderPlaylistResults(url, playlistData, resolveData) {
+        hideAll();
+        const card = $("#resolve-results");
+        card.classList.remove("hidden");
+
+        const tracks = playlistData.tracks || [];
+        const platform = playlistData.platform || "";
+        const firstTrack = tracks[0] || {};
+        const coverUrl = firstTrack.cover_url || "";
+
+        let html = '';
+        html += `<div class="info-row" style="margin-bottom:8px"><strong>Playlist</strong> · ${esc(platform)} · ${tracks.length} tracks</div>`;
+        html += `<button class="btn-primary" style="margin-bottom:12px" onclick="window._sfDownloadPlaylistTracks()">Download All (${tracks.length} tracks)</button>`;
+        html += '<div style="max-height:400px;overflow-y:auto">';
+        tracks.forEach((t, i) => {
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border, #333)">`;
+            html += `<span>${i+1}. ${esc(t.title || 'Unknown')} — ${esc(t.artist || '')}</span>`;
+            html += `<button class="btn-ghost" style="font-size:12px;padding:2px 8px" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>`;
+            html += `</div>`;
+        });
+        html += '</div>';
+
+        $("#platform-list").innerHTML = "";
+        $("#resolve-actions").innerHTML = html;
+
+        window._playlistTracksCache = tracks;
+        window._sfDownloadPlaylistTracks = async function() {
+            const tks = window._playlistTracksCache || [];
+            if (!tks.length) return;
+            try {
+                const resp = await fetch("/api/download/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tracks: tks }),
+                });
+                const data = await resp.json();
+                if (data.error) throw new Error(data.error);
+                toast(`Queued ${tks.length} playlist tracks`, "success");
                 updateQueueBadge();
             } catch (e) {
                 toast(e.message, "error");
