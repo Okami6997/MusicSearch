@@ -15,11 +15,6 @@ class TidalDownloader:
     APIS = [
         "https://hifi-one.spotisaver.net",
         "https://hifi-two.spotisaver.net",
-        "https://eu-central.monochrome.tf",
-        "https://us-west.monochrome.tf",
-        "https://api.monochrome.tf",
-        "https://monochrome-api.samidy.com",
-        "https://tidal.kinoplus.online",
     ]
     UA = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

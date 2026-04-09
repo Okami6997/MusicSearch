@@ -31,28 +31,56 @@ class SpotifyDownloader:
     # ── Token management ─────────────────────────────────────────
 
     def _fetch_token(self) -> str:
-        """Get a session token from the SpotiDownloader API (cached)."""
+        """Get a session token from the SpotiDownloader API.
+
+        The service now requires Cloudflare Turnstile verification.
+        We attempt multiple approaches to obtain a valid token.
+        """
         if SpotifyDownloader._cached_token:
             return SpotifyDownloader._cached_token
 
+        # Try the new session endpoint with an anonymous request
         for attempt in range(3):
             try:
-                resp = self.session.get(
-                    "https://spdl.afkarxyz.fun/token", timeout=10
+                resp = self.session.post(
+                    "https://api.spotidownloader.com/session",
+                    json={"token": ""},
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "Origin": "https://spotidownloader.com",
+                        "Referer": "https://spotidownloader.com/",
+                        "User-Agent": self.UA,
+                    },
+                    timeout=10,
                 )
-                resp.raise_for_status()
-                token = resp.json().get("token", "")
-                if token:
-                    SpotifyDownloader._cached_token = token
-                    return token
-            except Exception as e:
-                if attempt == 2:
-                    raise ValueError(
-                        f"Failed to fetch SpotiDownloader token: {e}"
-                    )
+                data = resp.json()
+                if data.get("success") and data.get("token"):
+                    SpotifyDownloader._cached_token = data["token"]
+                    return data["token"]
+            except Exception:
+                pass
+
+            # Fallback: try legacy token endpoint
+            try:
+                resp = self.session.get(
+                    "https://spdl.afkarxyz.fun/token", timeout=5
+                )
+                if resp.status_code == 200:
+                    token = resp.json().get("token", "")
+                    if token:
+                        SpotifyDownloader._cached_token = token
+                        return token
+            except Exception:
+                pass
+
+            if attempt < 2:
                 time.sleep(1)
 
-        raise ValueError("SpotiDownloader token not found in response")
+        raise ValueError(
+            "SpotiDownloader token unavailable - service requires "
+            "Cloudflare Turnstile verification"
+        )
 
     # ── URL helpers ──────────────────────────────────────────────
 
@@ -126,6 +154,7 @@ class SpotifyDownloader:
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Origin": "https://spotidownloader.com",
             "Referer": "https://spotidownloader.com/",
             "User-Agent": self.UA,
@@ -136,6 +165,12 @@ class SpotifyDownloader:
             headers=headers,
             timeout=15,
         )
+        if resp.status_code == 403:
+            SpotifyDownloader._cached_token = None
+            raise ValueError(
+                "SpotiDownloader returned 403 - token expired or "
+                "Turnstile verification required"
+            )
         resp.raise_for_status()
         data = resp.json()
 

@@ -2,6 +2,7 @@
 
 import os
 import random
+import time
 from typing import Callable, Dict
 
 import requests
@@ -24,10 +25,9 @@ class QobuzDownloader:
     )
 
     APIS = [
+        "https://qbz.afkarxyz.qzz.io/api/track/",
         "https://dab.yeet.su/api/stream?trackId=",
         "https://dabmusic.xyz/api/stream?trackId=",
-        "https://qbz.afkarxyz.fun/api/track/",
-        "https://qbz.afkarxyz.qzz.io/api/track/",
     ]
 
     def __init__(self, timeout: float = 60.0, app_id: str = APP_ID):
@@ -83,11 +83,24 @@ class QobuzDownloader:
                 "Chrome/145.0.0.0 Safari/537.36"
             )
         }
-        resp = self.session.get(url, headers=headers, timeout=self.timeout)
+        max_retries = 3
+        for attempt in range(max_retries):
+            resp = self.session.get(url, headers=headers, timeout=self.timeout)
+            if resp.status_code == 429 or (
+                resp.status_code == 200
+                and "Too many" in resp.text[:100]
+            ):
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise Exception("rate limited after retries")
+            break
         if resp.status_code != 200:
             raise Exception(f"status {resp.status_code}")
         if not resp.text.strip():
             raise Exception("empty body")
+        if resp.text.strip().startswith("<!"):
+            raise Exception("received HTML instead of JSON (service down)")
 
         try:
             data = resp.json()
@@ -95,6 +108,8 @@ class QobuzDownloader:
             raise Exception("invalid response")
 
         if isinstance(data, dict):
+            if data.get("error"):
+                raise Exception(data["error"])
             if data.get("url"):
                 return data["url"]
             if data.get("data", {}).get("url"):
@@ -114,14 +129,16 @@ class QobuzDownloader:
 
             random.shuffle(providers)
             last_err = None
+            errors = []
             for p in providers:
                 try:
                     url = p["func"]()
                     if url:
                         return url
                 except Exception as e:
+                    errors.append(f"{p['name']}: {e}")
                     last_err = e
-            raise Exception(last_err or "all providers failed")
+            raise Exception("; ".join(errors) if errors else "all providers failed")
 
         try:
             return attempt_download(quality_code)

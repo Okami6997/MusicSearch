@@ -267,16 +267,9 @@ class SongLinkClient:
         return result
 
     def _check_qobuz(self, isrc: str) -> bool:
-        try:
-            r = self.session.get(
-                f"https://www.qobuz.com/api.json/0.2/track/search"
-                f"?query={isrc}&limit=1&app_id=798273057",
-                timeout=10,
-            )
-            if r.status_code == 200:
-                return r.json().get("tracks", {}).get("total", 0) > 0
-        except Exception:
-            pass
+        # Qobuz search API now requires user authentication (app_id alone
+        # is no longer sufficient) and all known download proxies are also
+        # down.  Return False until the upstream situation changes.
         return False
 
     def _get_deezer_isrc(self, deezer_url: str) -> str:

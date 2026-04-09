@@ -566,6 +566,14 @@ def search():
             from backend.deezer import DeezerClient
             return DeezerClient().search_tracks(q, limit=external_limit)
 
+        def _do_amazon_tracks():
+            from backend.search import AmazonSearchClient
+            return AmazonSearchClient().search_tracks(q, limit=external_limit)
+
+        def _do_spotify_tracks():
+            from backend.search import SpotifySearchClient
+            return SpotifySearchClient().search_tracks(q, limit=external_limit, offset=offset)
+
         def _do_soundcloud_tracks():
             from backend.soundcloud import SoundCloudClient
             return SoundCloudClient().search_tracks(q, limit=external_limit)
@@ -580,6 +588,8 @@ def search():
             ("qobuz_artists",  _do_qobuz_artists),
             ("qobuz_albums",   _do_qobuz_albums),
             ("youtube_tracks", _do_youtube),
+            ("spotify_tracks", _do_spotify_tracks),
+            ("amazon_tracks", _do_amazon_tracks),
             ("deezer_tracks", _do_deezer_tracks),
             ("soundcloud_tracks", _do_soundcloud_tracks),
         ]
@@ -592,7 +602,7 @@ def search():
 
         result = {
             "tracks": [], "artists": [], "albums": [],
-            "youtube_tracks": [], "deezer_tracks": [], "soundcloud_tracks": [], "source": "qobuz",
+            "youtube_tracks": [], "spotify_tracks": [], "amazon_tracks": [], "deezer_tracks": [], "soundcloud_tracks": [], "source": "qobuz",
             "has_more": False, "offset": offset, "q": q,
         }
         if fallback:
@@ -648,6 +658,40 @@ def search():
                         socketio.emit("search_partial", {
                             "section": "tracks", "data": norm, "done": list(done_labels),
                             "source": "youtube_music", "has_more": False, "append": True, "q": q,
+                        }, room=sid)
+                elif label == "spotify_tracks":
+                    norm = []
+                    for item in (data or []):
+                        row = dict(item)
+                        row["source"] = "spotify"
+                        row["service"] = "Spotify"
+                        norm.append(row)
+                    result["spotify_tracks"] = norm
+                    result["tracks"].extend(norm)
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "spotify_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
+                        }, room=sid)
+                        socketio.emit("search_partial", {
+                            "section": "tracks", "data": norm, "done": list(done_labels),
+                            "source": "spotify", "has_more": False, "append": True, "q": q,
+                        }, room=sid)
+                elif label == "amazon_tracks":
+                    norm = []
+                    for item in (data or []):
+                        row = dict(item)
+                        row["source"] = "amazon"
+                        row["service"] = "Amazon Music"
+                        norm.append(row)
+                    result["amazon_tracks"] = norm
+                    result["tracks"].extend(norm)
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "amazon_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
+                        }, room=sid)
+                        socketio.emit("search_partial", {
+                            "section": "tracks", "data": norm, "done": list(done_labels),
+                            "source": "amazon", "has_more": False, "append": True, "q": q,
                         }, room=sid)
                 elif label == "deezer_tracks":
                     norm = []
@@ -711,6 +755,8 @@ def search():
             socketio.emit("search_done", {
                 "tracks": result["tracks"], "artists": result["artists"],
                 "albums": result["albums"], "youtube_tracks": result["youtube_tracks"],
+                "spotify_tracks": result["spotify_tracks"],
+                "amazon_tracks": result["amazon_tracks"],
                 "deezer_tracks": result["deezer_tracks"],
                 "soundcloud_tracks": result["soundcloud_tracks"],
                 "source": result["source"], "has_more": result["has_more"],

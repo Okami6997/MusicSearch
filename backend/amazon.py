@@ -32,15 +32,30 @@ class AmazonDownloader:
         return m.group(1)
 
     def get_stream(self, asin: str) -> dict:
-        r = self.session.get(
-            f"https://amzn.afkarxyz.qzz.io/api/track/{asin}", timeout=60
-        )
-        r.raise_for_status()
-        d = r.json()
-        if not d.get("streamUrl"):
-            raise ValueError("No stream URL from Amazon API")
-        return {"stream_url": d["streamUrl"],
-                "decryption_key": d.get("decryptionKey", "")}
+        for attempt in range(3):
+            try:
+                r = self.session.get(
+                    f"https://amzn.afkarxyz.qzz.io/api/track/{asin}", timeout=60
+                )
+                if r.status_code == 401:
+                    raise ValueError(
+                        "Amazon proxy API returned 401 Unauthorized - "
+                        "proxy credentials may have expired"
+                    )
+                r.raise_for_status()
+                d = r.json()
+                if d.get("error"):
+                    raise ValueError(f"Amazon API error: {d['error']}")
+                if not d.get("streamUrl"):
+                    raise ValueError("No stream URL from Amazon API")
+                return {"stream_url": d["streamUrl"],
+                        "decryption_key": d.get("decryptionKey", "")}
+            except (requests.ConnectionError, requests.Timeout) as e:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise ValueError(f"Amazon proxy API unavailable: {e}")
+        raise ValueError("Amazon proxy API failed after retries")
 
     def fetch_track_metadata(self, amazon_url_or_asin: str) -> dict:
         asin = self.extract_asin(amazon_url_or_asin)

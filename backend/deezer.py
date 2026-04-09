@@ -73,9 +73,9 @@ class DeezerDownloader:
 
     APP_ID = "798273057"
     PROVIDER_APIS = [
+        "https://qbz.afkarxyz.qzz.io/api/track/",
         "https://dab.yeet.su/api/stream?trackId=",
         "https://dabmusic.xyz/api/stream?trackId=",
-        "https://qbz.afkarxyz.qzz.io/api/track/",
     ]
 
     UA = (
@@ -125,16 +125,30 @@ class DeezerDownloader:
         for base in providers:
             try:
                 sep = "?" if "qbz.afkarxyz" in base else "&"
-                r = self.session.get(
-                    f"{base}{qobuz_track_id}{sep}quality={q}",
-                    timeout=self.timeout,
-                )
+                url = f"{base}{qobuz_track_id}{sep}quality={q}"
+                max_retries = 3
+                for attempt in range(max_retries):
+                    r = self.session.get(url, timeout=self.timeout)
+                    if r.status_code == 429 or (
+                        r.status_code == 200
+                        and "Too many" in r.text[:100]
+                    ):
+                        if attempt < max_retries - 1:
+                            import time
+                            time.sleep(2 ** attempt)
+                            continue
+                        raise ValueError("rate limited after retries")
+                    break
                 if r.status_code != 200:
                     raise ValueError(f"status {r.status_code}")
+                if r.text.strip().startswith("<!"):
+                    raise ValueError("received HTML instead of JSON (service down)")
                 data = r.json()
-                url = data.get("url") or data.get("data", {}).get("url", "")
-                if url:
-                    return url
+                if data.get("error"):
+                    raise ValueError(data["error"])
+                stream_url = data.get("url") or data.get("data", {}).get("url", "")
+                if stream_url:
+                    return stream_url
                 raise ValueError("No stream URL in provider response")
             except Exception as e:
                 errors.append(f"{base}: {e}")
