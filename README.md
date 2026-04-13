@@ -6,8 +6,11 @@ A web-based music search and download application. Search or paste any music pla
 
 ## Features
 
-- **Music Search** — Search by title, artist, or ISRC across Qobuz, iTunes, Deezer, and SoundCloud with concurrent async service fan-out; each search runs in single-call mode (no API pagination), query-scoped incremental updates append incoming chunks as they arrive, and the live track feed merges cross-service tracks (including YouTube Music/Deezer/SoundCloud) with dedupe
-- **Search Source Toggles** — Show/hide result sections (Tracks, Artists, Albums, YouTube, Deezer, SoundCloud) using inline filter pills in the Search UI
+- **Music Search** — Search by title, artist, or ISRC across Qobuz, iTunes, Spotify, Tidal, Deezer, Amazon Music, YouTube Music, and SoundCloud with concurrent async service fan-out; each search runs in single-call mode (no API pagination), query-scoped incremental updates append incoming chunks as they arrive, and the live track feed merges cross-service tracks with dedupe
+- **Advanced Search** — Expand the search bar to reveal three dedicated input fields (Track, Artist, Album) for more precise, structured queries. Fields are combined into a composite query sent to all services; collapsing the panel merges values back into the main search bar
+- **Search Source Toggles** — Show/hide result sections (Tracks, Artists, Albums) and individual services (Qobuz, Apple Music, YouTube, Deezer, SoundCloud, Tidal, Spotify, Amazon) using the filter modal in the Search UI
+- **Section Modals** — Clicking a section heading (Tracks, Artists, Albums) opens a full-screen modal with infinite scroll for browsing large result sets without clipping or layout constraints
+- **Album/Artist Detail Modal** — "View" button on album and artist rows opens a stacking detail modal with cover art, metadata, and track listing; artist expand includes per-album "View" buttons for drilling into track lists
 - **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
 - **Album & Playlist Expansion** — Paste an album or playlist URL from Spotify, YouTube Music, or Amazon Music and expand it into individual tracks with a single-click "Download All" batch action
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
@@ -75,7 +78,7 @@ Settings are available via the web UI (gear icon):
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/search?q=...` | Search Qobuz catalog (title/artist/ISRC) |
+| GET | `/api/search?q=...` | Search catalog (title/artist/ISRC); optional `track`, `artist`, `album` params for advanced search |
 | GET | `/api/resolve?url=...` | Resolve any music URL via SongLink |
 | GET | `/api/availability?url=...` | Check platform availability |
 | GET | `/api/lyrics?track=...&artist=...` | Fetch lyrics from LRCLIB |
@@ -113,8 +116,9 @@ MusicSearch/
 ├── docker-compose.yml      # Docker Compose config
 ├── backend/
 │   ├── songlink.py         # Cross-platform URL resolver (SongLink API)
-│   ├── tidal.py            # Tidal downloader (7 proxy APIs)
+│   ├── tidal.py            # Tidal downloader (7 proxy APIs) + search client
 │   ├── spotify.py          # Spotify downloader (FLAC via SpotiDownloader)
+│   ├── search.py           # Amazon Music + Spotify search clients
 │   ├── qobuz.py            # Qobuz downloader (ISRC-based search)
 │   ├── amazon.py           # Amazon Music downloader
 │   ├── youtube.py          # YouTube Music downloader (MP3 via proxy APIs)

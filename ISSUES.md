@@ -31,6 +31,14 @@
 - [x] Parallel album/playlist download with in-order UI completion — Album/playlist tracks download across all 5 workers concurrently; a batch-ordered flush mechanism ensures the queue display always shows completions in track order.
 - [x] 30s DRM-free preview playback in search results — Play buttons on Deezer and iTunes tracks; shared audio element with auto-stop on new selection.
 - [x] Fix Docker search slowness from eventlet green DNS — Added `EVENTLET_NO_GREENDNS=yes` to Dockerfile and docker-compose; external DNS servers added to docker-compose.
+- [x] Search regression tracking: Tidal, Apple Music stability — Fixed Tidal search parameter (`s=` not `query=`), fixed Tidal response parsing (nested `data.items`, dict artist), moved Apple Music to always-concurrent, added retry/backoff and per-service health tracking. (GitHub: #27)
+- [x] Multi-source album search — Albums now returned from Spotify (pathfinder `albumsV2`), Tidal (extracted from track results), and Apple Music. Deezer album search wired but geo-restricted.
+- [x] Album/artist service filtering — Toggling a service filter now correctly hides/shows albums and artists from that service, not just tracks.
+- [x] Advanced search mode — Expand button on search bar reveals 3 dedicated fields (Track, Artist, Album) for more precise queries.
+- [x] Section modals — Clicking a section heading (Tracks, Artists, Albums) opens a full-screen modal with infinite scroll instead of inline collapsible sections.
+- [x] Detail modal for albums/artists — "View" button on album/artist rows opens a stacking detail modal with cover art and track listing.
+- [x] View album from artist expand — Artist detail modal now includes a "View" button for each album alongside "Download Album".
+- [x] Detail modal z-index fix — Detail modal properly stacks above section modal when opened from within it.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads

@@ -376,6 +376,11 @@ def search():
     if not q:
         return jsonify({"error": "Query required"}), 400
 
+    # Advanced search: optional per-field parameters
+    adv_track = request.args.get("track", "").strip()
+    adv_artist = request.args.get("artist", "").strip()
+    adv_album = request.args.get("album", "").strip()
+
     # If it looks like an ISRC, search by ISRC via Qobuz (fast single-result path)
     if len(q) == 12 and q[:2].isalpha() and q[2:].isalnum():
         try:
@@ -399,6 +404,29 @@ def search():
     album_limit = max(1, min(request.args.get("album_limit", 25, type=int), 100))
     external_limit = max(1, min(request.args.get("external_limit", track_limit, type=int), 200))
 
+    # ── Retry helper for transient HTTP failures ─────────────────────────────
+    def _with_retries(func, retries: int = 2, backoff: float = 1.0):
+        """Execute a search function with exponential-backoff retry on transient failures."""
+        last_exc = None
+        for attempt in range(retries + 1):
+            try:
+                return func()
+            except Exception as exc:
+                last_exc = exc
+                # Retry on 429, 5xx; fail immediately on 4xx client errors
+                if hasattr(exc, "response") and exc.response is not None:
+                    status = exc.response.status_code
+                    if status in (429, 500, 502, 503, 504) and attempt < retries:
+                        time.sleep(backoff * (2 ** attempt))
+                        continue
+                    if status in (401, 403, 404):
+                        raise  # don't retry client errors
+                elif attempt < retries:
+                    time.sleep(backoff * (2 ** attempt))
+                    continue
+                raise
+        raise last_exc if last_exc else RuntimeError("Unexpected retry error")
+
     # ── Concurrent search helper ────────────────────────────────────────────
     def _run_concurrent(q: str, offset: int, fallback: bool = False) -> dict:
         """Run all service searches concurrently; emit partial SocketIO events
@@ -406,14 +434,22 @@ def search():
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from backend.qobuz import QobuzDownloader
 
+        # Per-source health status updated as each task completes
+        source_status: dict[str, dict] = {}
+
+        def _update_status(label: str, status: str, error: str = "", latency_ms: int = 0):
+            source_status[label] = {"status": status, "error": error, "latency_ms": latency_ms}
+
         def _do_qobuz_tracks():
+            import time
+            t0 = time.monotonic()
             try:
                 qobuz_dl = QobuzDownloader()
-                r = qobuz_dl.session.get(
+                r = _with_retries(lambda: qobuz_dl.session.get(
                     "https://www.qobuz.com/api.json/0.2/track/search",
                     params={"query": q, "limit": track_limit, "offset": offset, "app_id": qobuz_dl.APP_ID},
                     timeout=15,
-                )
+                ))
                 r.raise_for_status()
                 payload = r.json()
                 tracks_obj = payload.get("tracks", {})
@@ -439,8 +475,10 @@ def search():
                     })
                 total = int(tracks_obj.get("total", 0) or 0)
                 _ = total  # total kept for debugging/telemetry if needed
+                _update_status("qobuz_tracks", "healthy", "", int((time.monotonic() - t0) * 1000))
                 return {"items": out, "has_more": False}
             except Exception as e:
+                _update_status("qobuz_tracks", "error", str(e), int((time.monotonic() - t0) * 1000))
                 if not (isinstance(e, http_requests.HTTPError) and e.response is not None and e.response.status_code == 401):
                     import logging
                     logging.getLogger("search").warning(f"qobuz_tracks failed: {e}")
@@ -566,17 +604,48 @@ def search():
             from backend.deezer import DeezerClient
             return DeezerClient().search_tracks(q, limit=external_limit)
 
+        def _do_deezer_albums():
+            from backend.deezer import DeezerClient
+            return DeezerClient().search_albums(q, limit=album_limit)
+
         def _do_amazon_tracks():
             from backend.search import AmazonSearchClient
             return AmazonSearchClient().search_tracks(q, limit=external_limit)
 
+        # Shared Spotify client (auth is expensive, reuse across tracks + albums)
+        _spotify_results = {}
+
         def _do_spotify_tracks():
             from backend.search import SpotifySearchClient
-            return SpotifySearchClient().search_tracks(q, limit=external_limit, offset=offset)
+            client = SpotifySearchClient()
+            tracks = client.search_tracks(q, limit=external_limit, offset=offset)
+            # Also fetch albums with same authed client
+            try:
+                _spotify_results["albums"] = client.search_albums(q, limit=album_limit)
+            except Exception:
+                _spotify_results["albums"] = []
+            return tracks
 
         def _do_soundcloud_tracks():
             from backend.soundcloud import SoundCloudClient
             return SoundCloudClient().search_tracks(q, limit=external_limit)
+
+        # Shared container for tidal albums extracted from track search
+        _tidal_results = {}
+
+        def _do_tidal_tracks():
+            import time as _time
+            t0 = _time.monotonic()
+            try:
+                from backend.tidal import TidalSearchClient
+                client = TidalSearchClient()
+                tracks = client.search_tracks(q, limit=external_limit)
+                _tidal_results["albums"] = client.get_last_albums()
+                _update_status("tidal_tracks", client.last_status, client.last_error, int((_time.monotonic() - t0) * 1000))
+                return tracks
+            except Exception as e:
+                _update_status("tidal_tracks", "error", str(e), int((_time.monotonic() - t0) * 1000))
+                return []
 
         def _do_youtube():
             return _youtube_search(q, external_limit)
@@ -592,17 +661,19 @@ def search():
             ("amazon_tracks", _do_amazon_tracks),
             ("deezer_tracks", _do_deezer_tracks),
             ("soundcloud_tracks", _do_soundcloud_tracks),
+            ("tidal_tracks", _do_tidal_tracks),
+            ("itunes_tracks",  _do_itunes_tracks),
+            ("itunes_artists", _do_itunes_artists),
+            ("itunes_albums",  _do_itunes_albums),
+            ("deezer_albums",  _do_deezer_albums),
         ]
-        if fallback:
-            tasks += [
-                ("itunes_tracks",  _do_itunes_tracks),
-                ("itunes_artists", _do_itunes_artists),
-                ("itunes_albums",  _do_itunes_albums),
-            ]
 
         result = {
             "tracks": [], "artists": [], "albums": [],
-            "youtube_tracks": [], "spotify_tracks": [], "amazon_tracks": [], "deezer_tracks": [], "soundcloud_tracks": [], "source": "qobuz",
+            "youtube_tracks": [], "spotify_tracks": [], "amazon_tracks": [],
+            "deezer_tracks": [], "deezer_albums": [], "soundcloud_tracks": [], "tidal_tracks": [],
+            "itunes_tracks": [], "itunes_artists": [], "itunes_albums": [],
+            "source": "qobuz",
             "has_more": False, "offset": offset, "q": q,
         }
         if fallback:
@@ -668,6 +739,14 @@ def search():
                         norm.append(row)
                     result["spotify_tracks"] = norm
                     result["tracks"].extend(norm)
+                    # Merge albums fetched alongside tracks
+                    spotify_albums = _spotify_results.get("albums", [])
+                    if spotify_albums:
+                        result["albums"].extend(spotify_albums)
+                        if sid:
+                            socketio.emit("search_partial", {
+                                "section": "albums", "data": spotify_albums, "done": list(done_labels), "append": True, "q": q,
+                            }, room=sid)
                     if sid:
                         socketio.emit("search_partial", {
                             "section": "spotify_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
@@ -727,6 +806,31 @@ def search():
                             "section": "tracks", "data": norm, "done": list(done_labels),
                             "source": "soundcloud", "has_more": False, "append": True, "q": q,
                         }, room=sid)
+                elif label == "tidal_tracks":
+                    norm = []
+                    for item in (data or []):
+                        row = dict(item)
+                        row["source"] = "tidal"
+                        row["service"] = "Tidal"
+                        norm.append(row)
+                    result["tidal_tracks"] = norm
+                    result["tracks"].extend(norm)
+                    # Merge albums extracted from tidal track results
+                    tidal_albums = _tidal_results.get("albums", [])
+                    if tidal_albums:
+                        result["albums"].extend(tidal_albums)
+                        if sid:
+                            socketio.emit("search_partial", {
+                                "section": "albums", "data": tidal_albums, "done": list(done_labels), "append": True, "q": q,
+                            }, room=sid)
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "tidal_tracks", "data": norm, "done": list(done_labels), "append": True, "q": q,
+                        }, room=sid)
+                        socketio.emit("search_partial", {
+                            "section": "tracks", "data": norm, "done": list(done_labels),
+                            "source": "tidal", "has_more": False, "append": True, "q": q,
+                        }, room=sid)
                 elif label == "itunes_tracks":
                     track_items = data.get("items", []) if isinstance(data, dict) else (data or [])
                     has_more = bool(data.get("has_more", False)) if isinstance(data, dict) else False
@@ -750,6 +854,13 @@ def search():
                         socketio.emit("search_partial", {
                             "section": "albums", "data": data, "done": list(done_labels), "append": True, "q": q,
                         }, room=sid)
+                elif label == "deezer_albums":
+                    result["deezer_albums"] = data or []
+                    result["albums"].extend(data or [])
+                    if sid:
+                        socketio.emit("search_partial", {
+                            "section": "albums", "data": data or [], "done": list(done_labels), "append": True, "q": q,
+                        }, room=sid)
 
         if sid:
             socketio.emit("search_done", {
@@ -759,10 +870,13 @@ def search():
                 "amazon_tracks": result["amazon_tracks"],
                 "deezer_tracks": result["deezer_tracks"],
                 "soundcloud_tracks": result["soundcloud_tracks"],
+                "tidal_tracks": result.get("tidal_tracks", []),
+                "source_status": source_status,
                 "source": result["source"], "has_more": result["has_more"],
                 "offset": result["offset"], "q": q,
             }, room=sid)
 
+        result["source_status"] = source_status
         return result
 
     # ── Try Qobuz first; fall back to iTunes on any error ──────────────────

@@ -61,6 +61,37 @@ class DeezerClient:
             })
         return out
 
+    def search_albums(self, query: str, limit: int = 10) -> list[dict]:
+        """Search Deezer albums and normalize to SongsFetch album shape."""
+        try:
+            resp = self.session.get(
+                "https://api.deezer.com/search/album",
+                params={"q": query, "limit": limit},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception:
+            return []
+
+        out = []
+        for al in payload.get("data", []) or []:
+            artist = al.get("artist", {}) or {}
+            cover = al.get("cover_xl") or al.get("cover_big") or al.get("cover_medium") or ""
+            out.append({
+                "id": al.get("id"),
+                "title": al.get("title", ""),
+                "artist": artist.get("name", ""),
+                "cover_url": cover,
+                "tracks_count": al.get("nb_tracks", 0),
+                "release_date": "",
+                "year": "",
+                "hires": False,
+                "source": "deezer",
+                "service": "Deezer",
+            })
+        return out
+
 
 class DeezerDownloader:
     """Deezer downloader using Deezer metadata + ISRC provider fallback.

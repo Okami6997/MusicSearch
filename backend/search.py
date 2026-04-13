@@ -422,3 +422,100 @@ class SpotifySearchClient:
             })
 
         return out
+
+    def search_albums(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Search Spotify albums via pathfinder endpoint."""
+        try:
+            self._fetch_client_token()
+            payload = {
+                "variables": {
+                    "searchTerm": query,
+                    "offset": 0,
+                    "limit": max(1, min(int(limit), 50)),
+                    "numberOfTopResults": 5,
+                    "includeAudiobooks": True,
+                    "includeArtistHasConcertsField": False,
+                    "includePreReleases": True,
+                    "includeAuthors": False,
+                    "includeEpisodeContentRatingsV2": False,
+                },
+                "operationName": "searchDesktop",
+                "extensions": {
+                    "persistedQuery": {
+                        "version": 1,
+                        "sha256Hash": self.SEARCH_SHA256,
+                    }
+                },
+            }
+            resp = self.session.post(
+                "https://api-partner.spotify.com/pathfinder/v2/query",
+                json=payload,
+                headers={
+                    "User-Agent": self.UA,
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self._access_token}",
+                    "Client-Token": self._client_token,
+                    "Spotify-App-Version": self._client_version,
+                    "Origin": "https://open.spotify.com",
+                    "Referer": "https://open.spotify.com/",
+                },
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            return []
+
+        items = (
+            (data.get("data") or {})
+            .get("searchV2", {})
+            .get("albumsV2", {})
+            .get("items", [])
+        )
+        out: list[dict[str, Any]] = []
+        for node in items:
+            album_data = ((node or {}).get("data") or {})
+            if not album_data:
+                continue
+            uri = album_data.get("uri", "") or ""
+            album_id = self._track_id_from_uri(uri)
+            name = album_data.get("name", "") or ""
+            if not name or not album_id:
+                continue
+
+            artists = ((album_data.get("artists") or {}).get("items") or [])
+            artist_names = [
+                ((a or {}).get("profile") or {}).get("name", "")
+                for a in artists
+            ]
+            artist_names = [n for n in artist_names if n]
+
+            cover_sources = ((album_data.get("coverArt") or {}).get("sources") or [])
+            cover = ""
+            for src in cover_sources:
+                url = src.get("url", "")
+                if url:
+                    cover = url
+                    if (src.get("width") or 0) >= 300:
+                        break
+
+            year = ""
+            date_obj = album_data.get("date") or {}
+            if date_obj.get("year"):
+                year = str(date_obj["year"])
+
+            out.append({
+                "id": album_id,
+                "title": name,
+                "artist": ", ".join(artist_names),
+                "cover_url": cover,
+                "tracks_count": 0,
+                "release_date": "",
+                "year": year,
+                "hires": False,
+                "source": "spotify",
+                "service": "Spotify",
+            })
+
+        return out

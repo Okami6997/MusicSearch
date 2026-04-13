@@ -66,9 +66,179 @@
         if (e.key === "Enter") doSearch();
     });
 
+    // ── Advanced Search Toggle ──────────────────────────────
+    const advancedToggle = $("#btn-advanced-toggle");
+    const advancedFields = $("#advanced-search-fields");
+    const searchTrackInput = $("#search-track");
+    const searchArtistInput = $("#search-artist");
+    const searchAlbumInput = $("#search-album");
+    let _advancedMode = false;
+
+    if (advancedToggle && advancedFields) {
+        advancedToggle.addEventListener("click", () => {
+            _advancedMode = !_advancedMode;
+            advancedFields.classList.toggle("hidden", !_advancedMode);
+            advancedToggle.setAttribute("aria-expanded", String(_advancedMode));
+            if (_advancedMode) {
+                // Seed advanced fields from the main input
+                const mainVal = searchInput.value.trim();
+                if (mainVal && !searchTrackInput.value && !searchArtistInput.value && !searchAlbumInput.value) {
+                    searchTrackInput.value = mainVal;
+                }
+                searchTrackInput.focus();
+            } else {
+                // Collapse: compose main input from advanced fields if they have values
+                const combined = _buildAdvancedQuery();
+                if (combined) searchInput.value = combined;
+                searchInput.focus();
+            }
+        });
+
+        // Enter key in any advanced field triggers search
+        [searchTrackInput, searchArtistInput, searchAlbumInput].forEach((inp) => {
+            if (inp) inp.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") doSearch();
+            });
+        });
+    }
+
+    function _buildAdvancedQuery() {
+        const t = (searchTrackInput && searchTrackInput.value.trim()) || "";
+        const a = (searchArtistInput && searchArtistInput.value.trim()) || "";
+        const al = (searchAlbumInput && searchAlbumInput.value.trim()) || "";
+        const parts = [];
+        if (t) parts.push(t);
+        if (a) parts.push(a);
+        if (al) parts.push(al);
+        return parts.join(" ");
+    }
+
+    function _getSearchQuery() {
+        if (_advancedMode) {
+            return _buildAdvancedQuery();
+        }
+        return searchInput.value.trim();
+    }
+
+    function _getAdvancedParams() {
+        if (!_advancedMode) return "";
+        const t = (searchTrackInput && searchTrackInput.value.trim()) || "";
+        const a = (searchArtistInput && searchArtistInput.value.trim()) || "";
+        const al = (searchAlbumInput && searchAlbumInput.value.trim()) || "";
+        const params = [];
+        if (t) params.push(`track=${encodeURIComponent(t)}`);
+        if (a) params.push(`artist=${encodeURIComponent(a)}`);
+        if (al) params.push(`album=${encodeURIComponent(al)}`);
+        return params.join("&");
+    }
+
     // ── Search state for incremental rendering ──────────────────────────
     let _searchState = null;   // { q, doneSections, rendered }
     let _latestSearchPayload = null;
+
+    // ── Section modal state ──────────────────────────────────────────────
+    const SECTION_PAGE_SIZE = 50;
+    let _sectionModalKey = null;    // currently open section key
+    let _sectionModalRendered = 0;  // items rendered so far in modal
+    let _sectionModalObserver = null;
+
+    function _openSectionModal(sectionKey) {
+        const d = _latestSearchPayload || {};
+        const searchSource = d.source || "qobuz";
+        let allItems, label, rowRenderer;
+        if (sectionKey === "tracks") {
+            allItems = _isSectionEnabled("tracks") ? _applyServiceFiltersToTracks(d.tracks || []) : [];
+            label = "Tracks"; rowRenderer = _renderTrackRow;
+        } else if (sectionKey === "artists") {
+            allItems = _isSectionEnabled("artists") ? _applyServiceFiltersToItems(d.artists || []) : [];
+            label = "Artists"; rowRenderer = _renderArtistRow;
+        } else if (sectionKey === "albums") {
+            allItems = _isSectionEnabled("albums") ? _applyServiceFiltersToItems(d.albums || []) : [];
+            label = "Albums"; rowRenderer = _renderAlbumRow;
+        } else return;
+
+        if (!allItems.length) return;
+
+        _sectionModalKey = sectionKey;
+        _sectionModalRendered = 0;
+
+        const modal = $("#section-modal");
+        const titleEl = $("#section-modal-title");
+        const countEl = $("#section-modal-count");
+        const bodyEl = $("#section-modal-body");
+
+        titleEl.textContent = label;
+        countEl.textContent = allItems.length;
+
+        // Build initial batch
+        const initialSlice = allItems.slice(0, SECTION_PAGE_SIZE);
+        const html = initialSlice.map((item) => rowRenderer(item, searchSource)).join("");
+        bodyEl.innerHTML = `<div class="section-modal-scroll" id="section-modal-scroll">${html}</div>`;
+        _sectionModalRendered = initialSlice.length;
+        countEl.textContent = `${_sectionModalRendered} / ${allItems.length}`;
+
+        modal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+
+        // Set up infinite scroll inside modal
+        _setupSectionModalScroll(sectionKey, allItems, rowRenderer, searchSource);
+    }
+    window.sfOpenSectionModal = _openSectionModal;
+
+    function _setupSectionModalScroll(sectionKey, allItems, rowRenderer, searchSource) {
+        if (_sectionModalObserver) { _sectionModalObserver.disconnect(); _sectionModalObserver = null; }
+        if (_sectionModalRendered >= allItems.length) return;
+
+        const scrollContainer = document.getElementById("section-modal-scroll");
+        if (!scrollContainer) return;
+
+        // Add sentinel
+        let sentinel = document.getElementById("section-modal-sentinel");
+        if (!sentinel) {
+            sentinel = document.createElement("div");
+            sentinel.id = "section-modal-sentinel";
+            sentinel.className = "section-sentinel";
+            sentinel.textContent = "Loading more...";
+            scrollContainer.appendChild(sentinel);
+        }
+
+        _sectionModalObserver = new IntersectionObserver((entries) => {
+            if (!entries[0].isIntersecting) return;
+            const currentCount = _sectionModalRendered;
+            if (currentCount >= allItems.length) {
+                _sectionModalObserver.disconnect();
+                _sectionModalObserver = null;
+                const s = document.getElementById("section-modal-sentinel");
+                if (s) s.remove();
+                return;
+            }
+            const nextBatch = allItems.slice(currentCount, currentCount + SECTION_PAGE_SIZE);
+            if (!nextBatch.length) return;
+            const batchHtml = nextBatch.map((item) => rowRenderer(item, searchSource)).join("");
+            // Insert before sentinel
+            sentinel.insertAdjacentHTML("beforebegin", batchHtml);
+            _sectionModalRendered = currentCount + nextBatch.length;
+            // Update count
+            const countEl = document.getElementById("section-modal-count");
+            if (countEl) countEl.textContent = `${_sectionModalRendered} / ${allItems.length}`;
+            // If all loaded, remove sentinel
+            if (_sectionModalRendered >= allItems.length) {
+                _sectionModalObserver.disconnect();
+                _sectionModalObserver = null;
+                sentinel.remove();
+            }
+        }, { root: scrollContainer, rootMargin: "300px 0px" });
+        _sectionModalObserver.observe(sentinel);
+    }
+
+    window.sfCloseSectionModal = function () {
+        $("#section-modal").classList.add("hidden");
+        document.body.style.overflow = "";
+        _sectionModalKey = null;
+        _sectionModalRendered = 0;
+        if (_sectionModalObserver) { _sectionModalObserver.disconnect(); _sectionModalObserver = null; }
+    };
+
     const _defaultSearchFilters = {
         sections: { tracks: true, artists: true, albums: true },
         services: {
@@ -95,8 +265,8 @@
         return src;
     }
 
-    function _isServiceEnabled(track) {
-        const key = _normalizeServiceKey(track);
+    function _isServiceEnabled(item) {
+        const key = _normalizeServiceKey(item);
         if (!key) return true;
         if (!Object.prototype.hasOwnProperty.call(_searchFilters.services, key)) return true;
         return !!_searchFilters.services[key];
@@ -104,6 +274,11 @@
 
     function _applyServiceFiltersToTracks(tracks) {
         return (tracks || []).filter((t) => _isServiceEnabled(t));
+    }
+
+    function _applyServiceFiltersToItems(items) {
+        // Generic filter for albums, artists, etc.
+        return (items || []).filter((item) => _isServiceEnabled(item));
     }
 
     function _renderSearchFilterSummary() {
@@ -184,15 +359,15 @@
             d.soundcloud_tracks || [],
             d.source || ""
         );
-        if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
-            _ensureSearchSentinel();
-        }
     }
 
     async function doSearch() {
-        const q = searchInput.value.trim();
+        const q = _getSearchQuery();
         if (!q) return;
         _unwatchSentinel('search-tracks-sentinel');
+
+        // Close any open section modal
+        window.sfCloseSectionModal();
 
         // Reset incremental state
         searchPagination = { q, offset: 0, loading: false, hasMore: false };
@@ -225,7 +400,10 @@
 
         try {
             const sid = socket.id || "";
-            const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}&sid=${encodeURIComponent(sid)}`);
+            const advParams = _getAdvancedParams();
+            let url = `/api/search?q=${encodeURIComponent(q)}&sid=${encodeURIComponent(sid)}`;
+            if (advParams) url += `&${advParams}`;
+            const resp = await fetch(url);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
             const mergedTracks = _composeMergedTracks(
@@ -259,9 +437,6 @@
                 data.soundcloud_tracks || [],
                 data.source || ""
             );
-            if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
-                _ensureSearchSentinel();
-            }
         } catch (e) {
             _searchState = null;
             socket.off("search_partial", onPartial);
@@ -321,20 +496,6 @@
         if (section === "tracks") {
             searchPagination.hasMore = !!has_more;
             searchPagination.offset = tracks.length;
-            if (has_more) {
-                // Inject sentinel div if not already present
-                let sentinel = document.getElementById("search-tracks-sentinel");
-                if (!sentinel) {
-                    const sectionEl = document.getElementById("tracks-results-section");
-                    if (sectionEl) {
-                        sentinel = document.createElement("div");
-                        sentinel.id = "search-tracks-sentinel";
-                        sentinel.className = "load-sentinel";
-                        sentinel.textContent = "Scroll to load more tracks";
-                        sectionEl.appendChild(sentinel);
-                    }
-                }
-            }
         }
 
         // For partial: only render sections that have arrived so far
@@ -349,9 +510,89 @@
             source: partialSource,
         };
         _renderIncrementalSearchResults(tracks, artists, albums, ytTracks, dzTracks, scTracks, partialSource);
-        if (searchPagination.hasMore && _isSectionEnabled("tracks")) {
-            _ensureSearchSentinel();
-        }
+    }
+
+    // ── Individual row renderers ────────────────────────────────────────
+
+    function _renderTrackRow(t, searchSource) {
+        return `<div class="track-row">
+            <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
+                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+            <div class="track-info">
+                <div class="track-title">${esc(t.title)}</div>
+                <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
+                <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
+            </div>
+            <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
+            <div class="track-actions">
+                ${previewBtn(t.preview_url)}
+                <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
+            </div>
+        </div>`;
+    }
+
+    function _renderArtistRow(a, searchSource) {
+        const src = esc(a.source || searchSource || 'qobuz');
+        return `<div class="track-row artist-row">
+                <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
+                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
+                <div class="track-info">
+                    <div class="track-title">${esc(a.name)}</div>
+                    <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
+                    <div class="track-meta">${serviceBadge(a.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}</div>
+                </div>
+                <div class="track-actions album-actions">
+                    <button class="btn-ghost" onclick="window.sfOpenDetailModal('artist','${esc(String(a.id || ''))}','${src}','${escJs(a.name || '')}','','${escJs(a.image_url || '')}')">View</button>
+                </div>
+            </div>`;
+    }
+
+    function _renderAlbumRow(al, searchSource) {
+        const src = esc(al.source || searchSource || 'qobuz');
+        return `<div class="track-row album-row">
+                <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
+                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
+                <div class="track-info">
+                    <div class="track-title">${esc(al.title)}</div>
+                    <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
+                    <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
+                </div>
+                <div class="track-actions album-actions">
+                    <button class="btn-ghost" onclick="window.sfOpenDetailModal('album','${esc(String(al.id || ''))}','${src}','${escJs(al.title || '')}','${escJs(al.artist || '')}','${escJs(al.cover_url || '')}')">View</button>
+                    <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${src}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
+                </div>
+            </div>`;
+    }
+
+    // ── Section heading builder (click opens modal) ───────────────────
+
+    const _chevronSvg = '<svg class="section-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+    function _buildSectionHeading(sectionKey, label, totalCount) {
+        return `<div class="results-section" id="${sectionKey}-results-section">
+            <h3 class="results-heading" data-section-heading="${sectionKey}" onclick="window.sfOpenSectionModal('${sectionKey}')">
+                ${_chevronSvg}${esc(label)}<span class="section-count">${totalCount}</span>
+            </h3>
+        </div>`;
+    }
+
+    function _renderSectionWithPaging(sectionKey, label, allItems, rowRenderer, searchSource) {
+        if (!allItems.length) return '';
+        return _buildSectionHeading(sectionKey, label, allItems.length);
+    }
+
+    // ── Section renderers (used by incremental + final) ─────────────────
+
+    function _renderArtistsSection(artists, searchSource) {
+        return _renderSectionWithPaging("artists", "Artists", artists, _renderArtistRow, searchSource);
+    }
+
+    function _renderAlbumsSection(albums, searchSource) {
+        return _renderSectionWithPaging("albums", "Albums", albums, _renderAlbumRow, searchSource);
+    }
+
+    function _renderTracksSection(tracks, searchSource) {
+        return _renderSectionWithPaging("tracks", "Tracks", tracks, _renderTrackRow, searchSource);
     }
 
     /** Render only the sections that have data so far, with loading indicators for pending sections. */
@@ -362,147 +603,39 @@
         results.classList.remove("hidden");
 
         const visibleTracks = _isSectionEnabled("tracks") ? _applyServiceFiltersToTracks(tracks) : [];
-        const visibleArtists = _isSectionEnabled("artists") ? artists : [];
-        const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
+        const visibleArtists = _isSectionEnabled("artists") ? _applyServiceFiltersToItems(artists) : [];
+        const visibleAlbums = _isSectionEnabled("albums") ? _applyServiceFiltersToItems(albums) : [];
 
         const allEmpty = !visibleTracks.length && !visibleArtists.length && !visibleAlbums.length;
         if (allEmpty) {
-            // Nothing yet — show loading indicator
             list.innerHTML = '<p class="text-muted">Waiting for results...</p>';
             return;
         }
 
         let html = "";
 
-        // Artists — show data or loading placeholder
+        // Artists
         if (visibleArtists.length) {
             html += _renderArtistsSection(visibleArtists, searchSource);
-        } else if (_isSectionEnabled("artists") && !_searchState.doneSections.has("artists")) {
-            html += '<div class="results-section"><h3 class="results-heading">Artists</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
+        } else if (_isSectionEnabled("artists") && _searchState && !_searchState.doneSections.has("artists")) {
+            html += '<div class="results-section"><h3 class="results-heading">' + _chevronSvg + 'Artists<span class="section-count">...</span></h3></div>';
         }
 
         // Albums
         if (visibleAlbums.length) {
             html += _renderAlbumsSection(visibleAlbums, searchSource);
-        } else if (_isSectionEnabled("albums") && !_searchState.doneSections.has("albums")) {
-            html += '<div class="results-section"><h3 class="results-heading">Albums</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
+        } else if (_isSectionEnabled("albums") && _searchState && !_searchState.doneSections.has("albums")) {
+            html += '<div class="results-section"><h3 class="results-heading">' + _chevronSvg + 'Albums<span class="section-count">...</span></h3></div>';
         }
 
         // Tracks
         if (visibleTracks.length) {
             html += _renderTracksSection(visibleTracks, searchSource);
-        } else if (_isSectionEnabled("tracks") && !_searchState.doneSections.has("tracks")) {
-            html += '<div class="results-section"><h3 class="results-heading">Tracks</h3><div class="skeleton-row"><span class="skeleton-loader"></span></div></div>';
+        } else if (_isSectionEnabled("tracks") && _searchState && !_searchState.doneSections.has("tracks")) {
+            html += '<div class="results-section"><h3 class="results-heading">' + _chevronSvg + 'Tracks<span class="section-count">...</span></h3></div>';
         }
 
         list.innerHTML = html;
-    }
-
-    function _renderArtistsSection(artists, searchSource) {
-        if (!artists.length) return '';
-        return `<div class="results-section"><h3 class="results-heading">Artists</h3>${artists.map((a) => `
-            <div class="expand-item">
-                <div class="track-row artist-row">
-                    <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(a.name)}</div>
-                        <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
-                        <div class="track-meta">${serviceBadge(a.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}</div>
-                    </div>
-                    <div class="track-actions album-actions">
-                        <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'artist','${esc(String(a.id || ''))}','${esc(a.source || searchSource || 'qobuz')}')">Expand</button>
-                    </div>
-                </div>
-                <div class="expand-panel hidden"></div>
-            </div>
-        `).join('')}</div>`;
-    }
-
-    function _renderAlbumsSection(albums, searchSource) {
-        if (!albums.length) return '';
-        return `<div class="results-section"><h3 class="results-heading">Albums</h3>${albums.map((al) => `
-            <div class="expand-item">
-                <div class="track-row album-row">
-                    <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(al.title)}</div>
-                        <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
-                        <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
-                    </div>
-                    <div class="track-actions album-actions">
-                        <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'album','${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}')">Expand</button>
-                        <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
-                    </div>
-                </div>
-                <div class="expand-panel hidden"></div>
-            </div>
-        `).join('')}</div>`;
-    }
-
-    function _renderTracksSection(tracks, searchSource) {
-        if (!tracks.length) return '';
-        let html = `<div class="results-section" id="tracks-results-section"><h3 class="results-heading">Tracks</h3>`;
-        html += tracks.map((t) => `
-            <div class="track-row">
-                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                <div class="track-info">
-                    <div class="track-title">${esc(t.title)}</div>
-                    <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                    <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
-                </div>
-                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                <div class="track-actions">
-                    ${previewBtn(t.preview_url)}
-                    <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
-                </div>
-            </div>
-        `).join("");
-        if (searchPagination.hasMore) html += '<div id="search-tracks-sentinel" class="load-sentinel">Scroll to load more tracks</div>';
-        html += '</div>';
-        return html;
-    }
-
-    function _renderYoutubeSection(youtubeTracks) {
-        if (!youtubeTracks.length) return '';
-        return `<div class="results-section"><h3 class="results-heading">YouTube Music</h3>${youtubeTracks.map((t) => `
-            <div class="track-row">
-                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                <div class="track-info">
-                    <div class="track-title">${esc(t.title || t.id)}</div>
-                    <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                    <div class="track-meta">${serviceBadge(t.service || 'YouTube Music')} <span>MP3 320kbps</span></div>
-                </div>
-                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                <div class="track-actions">
-                    ${previewBtn(t.preview_url)}
-                    <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
-                </div>
-            </div>
-        `).join('')}</div>`;
-    }
-
-    function _renderExternalServiceSection(title, tracks, serviceLabel) {
-        if (!tracks.length) return '';
-        return `<div class="results-section"><h3 class="results-heading">${esc(title)}</h3>${tracks.map((t) => `
-            <div class="track-row">
-                <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                     onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                <div class="track-info">
-                    <div class="track-title">${esc(t.title || t.id)}</div>
-                    <div class="track-artist">${esc(t.artist || '')}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                    <div class="track-meta">${serviceBadge(t.service || serviceLabel)}</div>
-                </div>
-                <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                <div class="track-actions">
-                    ${previewBtn(t.preview_url)}
-                    <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'${escJs(t.year || '')}')">Download</button>
-                </div>
-            </div>
-        `).join('')}</div>`;
     }
 
     async function loadMoreSearch() {
@@ -515,13 +648,10 @@
         const results = $("#search-results");
         const list = $("#tracks-list");
         const visibleTracks = _isSectionEnabled("tracks") ? _applyServiceFiltersToTracks(tracks) : [];
-        const visibleArtists = _isSectionEnabled("artists") ? artists : [];
-        const visibleAlbums = _isSectionEnabled("albums") ? albums : [];
-        const visibleYoutube = [];
-        const visibleDeezer = [];
-        const visibleSoundcloud = [];
+        const visibleArtists = _isSectionEnabled("artists") ? _applyServiceFiltersToItems(artists) : [];
+        const visibleAlbums = _isSectionEnabled("albums") ? _applyServiceFiltersToItems(albums) : [];
 
-        if (!visibleTracks.length && !visibleArtists.length && !visibleAlbums.length && !visibleYoutube.length && !visibleDeezer.length && !visibleSoundcloud.length) {
+        if (!visibleTracks.length && !visibleArtists.length && !visibleAlbums.length) {
             list.innerHTML = '<p class="text-muted">No results found.</p>';
             results.classList.remove("hidden");
             return;
@@ -531,102 +661,17 @@
 
         // Artists section
         if (visibleArtists.length) {
-            html += '<div class="results-section"><h3 class="results-heading">Artists</h3>';
-            html += visibleArtists.map((a) => `
-                <div class="expand-item">
-                    <div class="track-row artist-row">
-                        <img class="track-cover" src="${esc(a.image_url || '')}" alt="" loading="lazy" style="border-radius:50%"
-                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22 rx=%2224%22/></svg>'">
-                        <div class="track-info">
-                            <div class="track-title">${esc(a.name)}</div>
-                            <div class="track-artist">${a.albums_count ? a.albums_count + ' albums' : 'Artist'}</div>
-                            <div class="track-meta">${serviceBadge(a.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}</div>
-                        </div>
-                        <div class="track-actions album-actions">
-                            <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'artist','${esc(String(a.id || ''))}','${esc(a.source || searchSource || 'qobuz')}')">Expand</button>
-                        </div>
-                    </div>
-                    <div class="expand-panel hidden"></div>
-                </div>
-            `).join("");
-            html += '</div>';
+            html += _renderArtistsSection(visibleArtists, searchSource);
         }
 
         // Albums section
         if (visibleAlbums.length) {
-            html += '<div class="results-section"><h3 class="results-heading">Albums</h3>';
-            html += visibleAlbums.map((al) => `
-                <div class="expand-item">
-                    <div class="track-row album-row">
-                        <img class="track-cover" src="${esc(al.cover_url || '')}" alt="" loading="lazy"
-                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                        <div class="track-info">
-                            <div class="track-title">${esc(al.title)}</div>
-                            <div class="track-artist">${esc(al.artist)}${al.tracks_count ? ' · ' + al.tracks_count + ' tracks' : ''}${al.release_date ? ' · ' + esc(al.release_date.substring(0, 4)) : ''}</div>
-                            <div class="track-meta">${serviceBadge(al.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${al.hires ? ' <span>Hi-Res</span>' : ''}</div>
-                        </div>
-                        <div class="track-actions album-actions">
-                            <button class="btn-ghost" onclick="window.sfToggleSearchExpand(this,'album','${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}')">Expand</button>
-                            <button class="btn-dl" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || searchSource || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
-                        </div>
-                    </div>
-                    <div class="expand-panel hidden"></div>
-                </div>
-            `).join("");
-            html += '</div>';
+            html += _renderAlbumsSection(visibleAlbums, searchSource);
         }
 
         // Tracks section
         if (visibleTracks.length) {
-            html += '<div class="results-section" id="tracks-results-section"><h3 class="results-heading">Tracks</h3>';
-            html += visibleTracks.map((t) => `
-                <div class="track-row">
-                    <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(t.title)}</div>
-                        <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                        <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
-                    </div>
-                    <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                    <div class="track-actions">
-                        ${previewBtn(t.preview_url)}
-                        <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
-                    </div>
-                </div>
-            `).join("");
-            if (searchPagination.hasMore) html += '<div id="search-tracks-sentinel" class="load-sentinel">Scroll to load more tracks</div>';
-            html += '</div>';
-        }
-
-        // YouTube Music section
-        if (visibleYoutube.length) {
-            html += '<div class="results-section"><h3 class="results-heading">YouTube Music</h3>';
-            html += visibleYoutube.map((t) => `
-                <div class="track-row">
-                    <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(t.title || t.id)}</div>
-                        <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                        <div class="track-meta">${serviceBadge(t.service || 'YouTube Music')} <span>MP3 320kbps</span></div>
-                    </div>
-                    <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                    <div class="track-actions">
-                        ${previewBtn(t.preview_url)}
-                        <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','','${escJs(t.title || '')}','${escJs(t.artist || '')}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},0,0,0,'')">Download</button>
-                    </div>
-                </div>
-            `).join("");
-            html += '</div>';
-        }
-
-        if (visibleDeezer.length) {
-            html += _renderExternalServiceSection("Deezer", visibleDeezer, "Deezer");
-        }
-
-        if (visibleSoundcloud.length) {
-            html += _renderExternalServiceSection("SoundCloud", visibleSoundcloud, "SoundCloud");
+            html += _renderTracksSection(visibleTracks, searchSource);
         }
 
         list.innerHTML = html;
@@ -634,33 +679,8 @@
 
 
     function appendSearchTracks(tracks, hasMore, searchSource) {
-        if (!_isSectionEnabled("tracks")) return;
-        const section = $('#tracks-results-section');
-        if (!section) return;
-        _unwatchSentinel('search-tracks-sentinel');
-        const oldSentinel = $('#search-tracks-sentinel');
-        if (oldSentinel) oldSentinel.remove();
-        const newHtml = tracks.map((t) => `
-                <div class="track-row">
-                    <img class="track-cover" src="${esc(t.cover_url || '')}" alt="" loading="lazy"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%23262626%22 width=%2248%22 height=%2248%22/></svg>'">
-                    <div class="track-info">
-                        <div class="track-title">${esc(t.title)}</div>
-                        <div class="track-artist">${esc(t.artist)}${t.album ? ' · ' + esc(t.album) : ''}</div>
-                        <div class="track-meta">${serviceBadge(t.service || (searchSource === "itunes" ? "Apple Music" : "Qobuz"))}${t.isrc ? ' <span>ISRC: ' + esc(t.isrc) + '</span>' : ''}${t.hires ? ' <span>Hi-Res</span>' : ''}${t.sample_rate ? ' <span>' + t.sample_rate + 'kHz/' + t.bit_depth + 'bit</span>' : ''}</div>
-                    </div>
-                    <span class="track-duration">${fmtDuration(t.duration_ms)}</span>
-                    <div class="track-actions">
-                        ${previewBtn(t.preview_url)}
-                        <button class="btn-dl" onclick="window.sfDownload('${escJs(t.url || '')}','${escJs(t.isrc || '')}','${escJs(t.title)}','${escJs(t.artist)}','${escJs(t.album || '')}','${escJs(t.cover_url || '')}',${t.duration_ms || 0},${t.track_number || 0},${t.total_tracks || 0},${t.disc_number || 0},'${escJs(t.year || '')}')">Download</button>
-                    </div>
-                </div>
-            `).join('');
-        section.insertAdjacentHTML('beforeend', newHtml);
-        searchPagination.hasMore = hasMore;
-        if (hasMore) {
-            _ensureSearchSentinel();
-        }
+        // Legacy — now handled by per-section infinite scroll
+        return;
     }
 
     // ── URL Resolve ─────────────────────────────────────────
@@ -952,38 +972,52 @@
         }
     };
 
-    window.sfToggleSearchExpand = async function (btn, kind, id, source) {
-        const item = btn.closest(".expand-item");
-        const panel = item ? item.querySelector(".expand-panel") : null;
-        if (!panel || !id || !source) return;
+    window.sfOpenDetailModal = async function (kind, id, source, title, subtitle, coverUrl) {
+        const modal = $("#detail-modal");
+        const coverEl = $("#detail-modal-cover");
+        const titleEl = $("#detail-modal-title");
+        const subtitleEl = $("#detail-modal-subtitle");
+        const bodyEl = $("#detail-modal-body");
 
-        // Toggle if already loaded
-        if (panel.dataset.loaded === "1") {
-            const open = !panel.classList.contains("hidden");
-            panel.classList.toggle("hidden", open);
-            btn.textContent = open ? "Expand" : "Collapse";
-            return;
-        }
-
-        btn.disabled = true;
-        panel.classList.remove("hidden");
-        panel.innerHTML = '<p class="text-muted">Loading details...</p>';
+        titleEl.textContent = title || (kind === "album" ? "Album" : "Artist");
+        subtitleEl.textContent = subtitle || "";
+        coverEl.src = coverUrl || "";
+        coverEl.style.borderRadius = kind === "artist" ? "50%" : "var(--radius)";
+        bodyEl.innerHTML = '<p class="text-muted">Loading details...</p>';
+        modal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
 
         try {
             const qs = new URLSearchParams({ kind, id, source });
             const resp = await fetch(`/api/search/expand?${qs.toString()}`);
             const data = await resp.json();
             if (data.error) throw new Error(data.error);
-
-            panel.innerHTML = renderExpandItems(kind, data.items || [], source);
-            panel.dataset.loaded = "1";
-            btn.textContent = "Collapse";
+            bodyEl.innerHTML = renderExpandItems(kind, data.items || [], source);
         } catch (e) {
-            panel.innerHTML = `<p class="text-danger">${esc(e.message)}</p>`;
+            bodyEl.innerHTML = `<p class="text-danger">${esc(e.message)}</p>`;
             toast(e.message, "error");
-        } finally {
-            btn.disabled = false;
         }
+    };
+
+    window.sfCloseDetailModal = function () {
+        $("#detail-modal").classList.add("hidden");
+        document.body.style.overflow = "";
+    };
+
+    // Close detail or section modal on Escape
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            if (!$("#detail-modal").classList.contains("hidden")) {
+                window.sfCloseDetailModal();
+            } else if (!$("#section-modal").classList.contains("hidden")) {
+                window.sfCloseSectionModal();
+            }
+        }
+    });
+
+    // Keep legacy function for backward compat but redirect to modal
+    window.sfToggleSearchExpand = async function (btn, kind, id, source) {
+        window.sfOpenDetailModal(kind, id, source, '', '', '');
     };
 
     function renderExpandItems(kind, items, source) {
@@ -1009,6 +1043,7 @@
                 <span class="expand-main">${esc(al.title || "Untitled")}${al.release_date ? ` <span class="text-muted">(${esc(String(al.release_date).substring(0, 4))})</span>` : ""}</span>
                 <span class="expand-time">${al.tracks_count ? `${al.tracks_count} tracks` : ""}</span>
                 <span class="expand-action">
+                    <button class="btn-ghost" onclick="window.sfOpenDetailModal('album','${esc(String(al.id || ''))}','${esc(al.source || source || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">View</button>
                     <button class="btn-ghost" onclick="window.sfDownloadAlbum('${esc(String(al.id || ''))}','${esc(al.source || source || 'qobuz')}','${esc(al.title || '')}','${esc(al.artist || '')}','${esc(al.cover_url || '')}')">Download Album</button>
                 </span>
             </div>

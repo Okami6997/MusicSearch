@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SongsFetch</title>
     <link rel="icon" type="image/jpeg" href="/static/img/site-fire.jpg">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260406">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260414c">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
@@ -59,6 +59,23 @@
                     <div class="search-bar">
                         <input type="text" id="search-input" placeholder="Search for songs by title, artist, or ISRC..." autocomplete="off">
                         <button id="btn-search" class="btn-primary">Search</button>
+                        <button id="btn-advanced-toggle" class="icon-btn" title="Advanced search" aria-expanded="false" aria-controls="advanced-search-fields">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                    </div>
+                    <div id="advanced-search-fields" class="advanced-search-fields hidden">
+                        <div class="advanced-field">
+                            <label for="search-track">Track</label>
+                            <input type="text" id="search-track" placeholder="Track title..." autocomplete="off">
+                        </div>
+                        <div class="advanced-field">
+                            <label for="search-artist">Artist</label>
+                            <input type="text" id="search-artist" placeholder="Artist name..." autocomplete="off">
+                        </div>
+                        <div class="advanced-field">
+                            <label for="search-album">Album</label>
+                            <input type="text" id="search-album" placeholder="Album name..." autocomplete="off">
+                        </div>
                     </div>
                 </div>
                 <div id="tab-search-url" class="tab-content">
@@ -247,6 +264,40 @@
     </div>
 </div>
 
+<!-- Detail Modal (Album / Artist expand) -->
+<div id="detail-modal" class="modal hidden">
+    <div class="modal-overlay" onclick="window.sfCloseDetailModal()"></div>
+    <div class="modal-content detail-modal-content">
+        <div class="modal-header detail-modal-header">
+            <div class="detail-modal-title-block">
+                <img id="detail-modal-cover" class="detail-modal-cover" src="" alt="" />
+                <div>
+                    <h2 id="detail-modal-title"></h2>
+                    <p id="detail-modal-subtitle" class="text-muted" style="margin:2px 0 0;font-size:13px"></p>
+                </div>
+            </div>
+            <button class="icon-btn" onclick="window.sfCloseDetailModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="detail-modal-body">
+            <p class="text-muted">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Section Modal (Tracks / Artists / Albums list) -->
+<div id="section-modal" class="modal hidden">
+    <div class="modal-overlay" onclick="window.sfCloseSectionModal()"></div>
+    <div class="modal-content section-modal-content">
+        <div class="modal-header">
+            <h2 id="section-modal-title">Tracks</h2>
+            <span id="section-modal-count" class="section-count"></span>
+            <button class="icon-btn" onclick="window.sfCloseSectionModal()">&times;</button>
+        </div>
+        <div class="modal-body section-modal-body" id="section-modal-body">
+        </div>
+    </div>
+</div>
+
 <!-- Settings Modal -->
 <div id="settings-modal" class="modal hidden">
     <div class="modal-overlay"></div>
@@ -304,6 +355,6 @@
 <!-- Toast -->
 <div id="toast-container" class="toast-container"></div>
 
-<script src="/static/js/app.js?v=20260406b"></script>
+<script src="/static/js/app.js?v=20260414c"></script>
 </body>
 </html>

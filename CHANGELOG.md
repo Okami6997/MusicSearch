@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.4.0 (Unreleased)
+
+This release adds advanced search with per-field inputs (track, artist, album), multi-source album search (Spotify, Tidal, Deezer), Tidal search integration, retry/backoff for transient failures, per-service health tracking, service-aware album/artist filtering, and a full modal-based results UI.
+
+### New Features
+
+- **Search: Advanced search mode** — A chevron expand button next to the search bar reveals three dedicated input fields for Track, Artist, and Album. Fields are combined into a composite query sent to all services. Collapsing the panel merges the fields back into the main search bar. Enter key works in any field.
+- **Search: Multi-source album results** — Albums now come from Spotify, Tidal, and Apple Music (previously Apple Music only). Spotify albums are fetched via the pathfinder `albumsV2` endpoint; Tidal albums are extracted from track search results. Deezer album search is wired up but currently geo-restricted.
+- **Search: Tidal integration** — Added `TidalSearchClient` with full track and album search via the spotisaver proxy API. Tidal results appear alongside other services in the unified track list.
+- **Search: Per-service health tracking** — Each concurrent search task reports its status (`ok`, `error`), error message, and latency. The aggregated `source_status` object is included in the API response and `search_done` SocketIO event.
+- **Search: Retry with exponential backoff** — Transient HTTP failures (timeouts, 5xx) are retried up to 2 times with exponential backoff before marking a service as failed.
+- **UI: Section modals** — Clicking a section heading (Tracks, Artists, Albums) opens a full-screen modal with all items and infinite scroll (batches of 50). Replaces the old inline collapsible sections for a cleaner, unrestricted view.
+- **UI: Detail modal for albums/artists** — "View" button on album and artist rows opens a detail modal with cover art, title, and expandable track listing. Detail modal stacks above section modals (z-index 1100 vs 1000).
+- **UI: View album from artist expand** — Artist detail modal now shows a "View" button alongside "Download Album" for each album, allowing users to drill into album track listings without leaving the artist view.
+
+### Bug Fixes
+
+- **Search: Tidal API parameter fix** — Tidal proxy API requires `s=` (not `query=`) for the search term. Fixed in `TidalSearchClient.search_tracks()`.
+- **Search: Tidal response parsing** — Fixed handling of nested `data.items` response structure and dict-type artist values from the Tidal proxy API.
+- **Search: Apple Music always queried** — iTunes/Apple Music search was previously gated behind a fallback condition and only ran when all primary services failed. Now runs concurrently with all other services.
+- **Search: Album/artist service filtering** — Toggling a service filter (e.g., unchecking Apple Music) now correctly hides albums and artists from that service, not just tracks. Added `_applyServiceFiltersToItems()` for generic item filtering.
+- **UI: Detail modal hidden behind section modal** — Fixed z-index stacking so the album/artist detail modal always appears above the section modal when triggered from within it.
+
+### Files Changed
+
+- `app.py` — Added `track`, `artist`, `album` advanced search query parameters; added `_do_deezer_albums` task; Spotify tracks task now also fetches albums via shared client; Tidal tracks task extracts albums from track results; `deezer_albums` added to result dict and concurrent task list; album partial events emitted for Spotify, Tidal, and Deezer sources; added `_with_retries()` helper and `source_status` tracking; moved iTunes from fallback-only to always-concurrent
+- `backend/search.py` — Added `SpotifySearchClient.search_albums()` method that parses `albumsV2` from the pathfinder search response
+- `backend/tidal.py` — Added `_retry_with_backoff()` utility and `TidalSearchClient` class with `search_tracks()` and `get_last_albums()`; fixed `s=` parameter and nested response parsing
+- `backend/deezer.py` — Added `DeezerClient.search_albums()` using Deezer `/search/album` API
+- `static/js/app.js` — Added advanced search toggle (`_advancedMode`, `_buildAdvancedQuery`, `_getSearchQuery`, `_getAdvancedParams`); `doSearch()` uses `_getSearchQuery()` and passes advanced params to API; added `_applyServiceFiltersToItems()` for album/artist filtering; Enter key support in advanced fields; replaced inline collapsible sections with `_openSectionModal()` / `sfCloseSectionModal()` using modal + IntersectionObserver infinite scroll; removed dead code (`_appendMoreItems`, `_setupSectionScroll`, `_initSectionScrollObservers`, `_sectionCollapsed`); added "View" button in artist expand `renderExpandItems()`; Escape key handler now closes both detail and section modals
+- `static/css/style.css` — Added `.advanced-search-fields` grid layout with 3-column responsive design, `.advanced-field` label/input styling, expand toggle rotation animation, slide-in keyframe; mobile breakpoint collapses to single column; added `.section-modal-content` / `.section-modal-body` / `.section-modal-scroll` styles; set `#detail-modal` z-index to 1100 for proper stacking; removed old `.section-body` / `.section-body-scroll` / `.section-body.collapsed` styles
+- `templates/index.html` — Added expand toggle button (`#btn-advanced-toggle`) with chevron SVG; added `#advanced-search-fields` container with Track, Artist, Album inputs; added `#section-modal` with title, count badge, and scrollable body; updated CSS/JS cache versions
+
+---
+
 ## v1.3.0 (Unreleased)
 
 This release adds album and playlist expansion for Spotify/YouTube Music/Amazon Music, parallel album/playlist downloads with in-order UI completion, auto-resample to Hi-Res FLAC after every download, 30s DRM-free preview playback in search results, and a Docker DNS fix for search latency.
