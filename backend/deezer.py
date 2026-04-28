@@ -5,7 +5,6 @@ lists on API failures so callers can treat Deezer as an optional source.
 """
 
 import os
-import random
 import re
 
 import requests
@@ -94,20 +93,9 @@ class DeezerClient:
 
 
 class DeezerDownloader:
-    """Deezer downloader using Deezer metadata + ISRC provider fallback.
+    """Deezer downloader using Deezer metadata + direct FLAC endpoint."""
 
-    Flow:
-    1) Resolve Deezer track URL -> Deezer track metadata (includes ISRC)
-    2) Resolve ISRC -> provider stream URL (Qobuz-compatible providers)
-    3) Stream to output file
-    """
-
-    APP_ID = "798273057"
-    PROVIDER_APIS = [
-        "https://qbz.afkarxyz.qzz.io/api/track/",
-        "https://dab.yeet.su/api/stream?trackId=",
-        "https://dabmusic.xyz/api/stream?trackId=",
-    ]
+    DOWNLOAD_API = "https://api.deezmate.com/dl/{track_id}"
 
     UA = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -136,60 +124,19 @@ class DeezerDownloader:
             raise ValueError("Failed to fetch Deezer track metadata")
         return d
 
-    def _search_qobuz_track_by_isrc(self, isrc: str) -> dict:
-        r = self.session.get(
-            "https://www.qobuz.com/api.json/0.2/track/search",
-            params={"query": isrc, "limit": 1, "app_id": self.APP_ID},
-            timeout=30,
+    def _get_download_url(self, track_id: int) -> str:
+        resp = self.session.get(
+            self.DOWNLOAD_API.format(track_id=track_id),
+            timeout=self.timeout,
         )
-        r.raise_for_status()
-        items = r.json().get("tracks", {}).get("items", [])
-        if not items:
-            raise ValueError(f"Track not found for ISRC: {isrc}")
-        return items[0]
-
-    def _provider_download_url(self, qobuz_track_id: int, quality: str) -> str:
-        q = quality if quality not in ("", "5") else "6"
-        providers = list(self.PROVIDER_APIS)
-        random.shuffle(providers)
-        errors = []
-        for base in providers:
-            try:
-                sep = "?" if "qbz.afkarxyz" in base else "&"
-                url = f"{base}{qobuz_track_id}{sep}quality={q}"
-                max_retries = 3
-                for attempt in range(max_retries):
-                    r = self.session.get(url, timeout=self.timeout)
-                    if r.status_code == 429 or (
-                        r.status_code == 200
-                        and "Too many" in r.text[:100]
-                    ):
-                        if attempt < max_retries - 1:
-                            import time
-                            time.sleep(2 ** attempt)
-                            continue
-                        raise ValueError("rate limited after retries")
-                    break
-                if r.status_code != 200:
-                    raise ValueError(f"status {r.status_code}")
-                if r.text.strip().startswith("<!"):
-                    raise ValueError("received HTML instead of JSON (service down)")
-                data = r.json()
-                if data.get("error"):
-                    raise ValueError(data["error"])
-                stream_url = data.get("url") or data.get("data", {}).get("url", "")
-                if stream_url:
-                    return stream_url
-                raise ValueError("No stream URL in provider response")
-            except Exception as e:
-                errors.append(f"{base}: {e}")
-
-        # Standard quality fallbacks used by Qobuz providers
-        if q == "27":
-            return self._provider_download_url(qobuz_track_id, "7")
-        if q == "7":
-            return self._provider_download_url(qobuz_track_id, "6")
-        raise ValueError("All Deezer provider APIs failed: " + "; ".join(errors))
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("success"):
+            raise ValueError("Deezer download API returned success=false")
+        stream_url = data.get("links", {}).get("flac", "")
+        if not stream_url:
+            raise ValueError("No Deezer FLAC URL returned")
+        return stream_url
 
     def _stream_download(self, url: str, output_path: str, progress_cb=None) -> str:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -225,15 +172,7 @@ class DeezerDownloader:
         progress_cb=None,
         isrc: str = "",
     ) -> str:
-        # Resolve Deezer metadata first (source of truth for ISRC if missing)
         track_id = self.extract_track_id(deezer_url)
-        d = self.fetch_track(track_id)
-        deezer_isrc = (d.get("isrc") or "").upper().strip()
-        isrc = (isrc or deezer_isrc).upper().strip()
-        if not isrc:
-            raise ValueError("No ISRC found for Deezer track")
-
-        qobuz_track = self._search_qobuz_track_by_isrc(isrc)
-        stream_url = self._provider_download_url(int(qobuz_track.get("id")), quality)
+        stream_url = self._get_download_url(track_id)
         output_path = os.path.join(output_dir, filename)
         return self._stream_download(stream_url, output_path, progress_cb)
