@@ -1,6 +1,7 @@
 """SongsFetch - Flask web application for music search and download."""
 
 import importlib.metadata
+import json
 import logging
 import os
 import time
@@ -41,17 +42,39 @@ musicbrainz_client = MusicBrainzClient()
 download_manager: DownloadManager | None = None
 
 DEFAULT_DIR = os.environ.get("SONGSFETCH_OUTPUT_DIR") or os.path.join(os.path.expanduser("~"), "Music", "SongsFetch")
-settings = {
+SETTINGS_FILE = os.path.join(os.path.dirname(__file__), ".songsfetch-settings.json")
+DEFAULT_SETTINGS = {
     "output_dir": DEFAULT_DIR,
     "preferred_source": "tidal",
     "quality": "LOSSLESS",
     "embed_lyrics": True,
     "auto_resample": True,
 }
+settings = DEFAULT_SETTINGS.copy()
 scheduler_jobs: dict[str, dict] = {}
 scheduler_lock = Lock()
 _scheduler_running = False
 _scheduler_thread: Thread | None = None
+
+
+def _load_settings() -> dict:
+    loaded = DEFAULT_SETTINGS.copy()
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            loaded.update({k: data[k] for k in DEFAULT_SETTINGS if k in data})
+    except Exception:
+        pass
+    return loaded
+
+
+def _save_settings() -> None:
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as fh:
+            json.dump(settings, fh, indent=2, sort_keys=True)
+    except Exception:
+        pass
 
 
 def _init_download_manager():
@@ -141,6 +164,12 @@ def _ensure_scheduler_running():
 
 
 _init_download_manager()
+settings.update(_load_settings())
+download_manager.output_dir = settings["output_dir"]
+download_manager.preferred_source = settings["preferred_source"]
+download_manager.quality = settings["quality"]
+download_manager.embed_lyrics_flag = settings["embed_lyrics"]
+download_manager.auto_resample = settings["auto_resample"]
 history.init_db()
 _ensure_scheduler_running()
 youtube_client = YouTubeDownloader()
@@ -1758,6 +1787,7 @@ def update_settings():
     if "auto_resample" in body:
         settings["auto_resample"] = bool(body["auto_resample"])
         download_manager.auto_resample = bool(body["auto_resample"])
+    _save_settings()
     return jsonify(settings)
 
 
