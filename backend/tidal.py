@@ -1,6 +1,7 @@
 """Tidal downloader - downloads tracks via Tidal API proxies."""
 
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import random
@@ -192,6 +193,8 @@ class TidalSearchClient:
 class TidalDownloader:
     """Download tracks from Tidal via proxy APIs."""
 
+    API_TIMEOUT = 6
+
     APIS = [
         "https://eu-central.monochrome.tf",
         "https://us-west.monochrome.tf",
@@ -238,7 +241,7 @@ class TidalDownloader:
 
     def get_download_url(self, track_id: int, quality: str = "LOSSLESS") -> str:
         url = f"{self.api_url}/track/?id={track_id}&quality={quality}"
-        resp = self.session.get(url, timeout=30)
+        resp = self.session.get(url, timeout=self.API_TIMEOUT)
         resp.raise_for_status()
         body = resp.json()
 
@@ -249,6 +252,32 @@ class TidalDownloader:
                 if item.get("OriginalTrackUrl"):
                     return item["OriginalTrackUrl"]
         raise ValueError("No download URL in Tidal response")
+
+    def _get_download_url_from_api(self, api_url: str, track_id: int, quality: str) -> str:
+        original_api = self.api_url
+        try:
+            self.api_url = api_url
+            return self.get_download_url(track_id, quality)
+        finally:
+            self.api_url = original_api
+
+    def _get_download_url_parallel(self, track_id: int, quality: str) -> tuple[str, str]:
+        ordered_apis = [self.api_url] + [api for api in self.APIS if api != self.api_url]
+        errors = []
+
+        with ThreadPoolExecutor(max_workers=min(len(ordered_apis), 6)) as executor:
+            futures = {
+                executor.submit(self._get_download_url_from_api, api, track_id, quality): api
+                for api in ordered_apis
+            }
+            for future in as_completed(futures, timeout=self.API_TIMEOUT + 2):
+                api = futures[future]
+                try:
+                    return api, future.result()
+                except Exception as e:
+                    errors.append(f"{api}: {e}")
+
+        raise ValueError(f"All Tidal APIs failed: {'; '.join(errors)}")
 
     def download_file(self, url: str, output_path: str,
                       progress_cb=None) -> str:
@@ -304,36 +333,14 @@ class TidalDownloader:
         """Download a track from a Tidal URL."""
         track_id = self.parse_track_id(tidal_url)
 
-        dl_url = None
-        errors = []
-        original_api = self.api_url
-
         try:
-            dl_url = self.get_download_url(track_id, quality)
-        except Exception as e:
-            errors.append(str(e))
-
-        if not dl_url:
-            apis = list(self.APIS)
-            random.shuffle(apis)
-            for api in apis:
-                if api == self.api_url:
-                    continue
-                try:
-                    self.api_url = api
-                    dl_url = self.get_download_url(track_id, quality)
-                    if dl_url:
-                        break
-                except Exception as e:
-                    errors.append(f"{api}: {e}")
-            if not dl_url:
-                self.api_url = original_api
-
-        if not dl_url:
+            winning_api, dl_url = self._get_download_url_parallel(track_id, quality)
+            self.api_url = winning_api
+        except Exception:
             if quality == "HI_RES":
                 return self.download_track(
                     tidal_url, output_dir, "LOSSLESS", filename, progress_cb)
-            raise ValueError(f"All Tidal APIs failed: {'; '.join(errors)}")
+            raise
 
         if not filename:
             filename = f"{track_id}.flac"
