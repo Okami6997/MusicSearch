@@ -1436,6 +1436,11 @@ def queue():
     return jsonify(download_manager.get_queue())
 
 
+@app.route("/api/providers/health", methods=["GET"])
+def providers_health():
+    return jsonify(download_manager.get_provider_health())
+
+
 @app.route("/api/queue/clear", methods=["POST"])
 def clear_queue():
     download_manager.clear_completed()

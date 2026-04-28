@@ -289,6 +289,38 @@ input, select { font: inherit; color: inherit; }
 .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ── Queue ────────────────────────────────────────────────────── */
+.provider-health {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-card) 88%, var(--warning) 12%);
+}
+.provider-health-title {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.provider-health-list { display: flex; flex-direction: column; gap: 8px; }
+.provider-pill {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--bg-card) 82%, var(--warning) 18%);
+}
+.provider-pill-detail {
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .queue-list { display: flex; flex-direction: column; gap: 8px; }
 .empty-queue { color: var(--text-dim); text-align: center; padding: 24px; }
 .queue-item {

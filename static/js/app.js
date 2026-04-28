@@ -1680,7 +1680,48 @@
             const resp = await fetch("/api/queue");
             queueData = await resp.json();
             renderQueue();
+            await refreshProviderHealth();
         } catch (e) { /* ignore */ }
+    }
+
+    async function refreshProviderHealth() {
+        try {
+            const resp = await fetch("/api/providers/health");
+            const providers = await resp.json();
+            renderProviderHealth(providers);
+        } catch (e) { /* ignore */ }
+    }
+
+    function renderProviderHealth(providers) {
+        const panel = $("#provider-health");
+        const list = $("#provider-health-list");
+        if (!panel || !list) return;
+
+        const cooledDown = (providers || []).filter((provider) => provider.status === "cooldown");
+        if (!cooledDown.length) {
+            panel.classList.add("hidden");
+            list.innerHTML = "";
+            return;
+        }
+
+        panel.classList.remove("hidden");
+        list.innerHTML = cooledDown.map((provider) => {
+            const retry = formatRetryAfter(provider.retry_after_seconds || 0);
+            const detail = provider.last_error ? `<span class="provider-pill-detail">${esc(provider.last_error)}</span>` : "";
+            return `
+                <div class="provider-pill" title="${esc(provider.last_error || '')}">
+                    <span>${esc(provider.name)} cooling down${retry ? `, retry in ${retry}` : ""}</span>
+                    ${detail}
+                </div>
+            `;
+        }).join("");
+    }
+
+    function formatRetryAfter(totalSeconds) {
+        if (!totalSeconds) return "";
+        if (totalSeconds < 60) return `${totalSeconds}s`;
+        const minutes = Math.ceil(totalSeconds / 60);
+        return `${minutes}m`;
     }
 
     function renderQueue() {
@@ -1731,6 +1772,7 @@
         if (idx >= 0) queueData[idx] = data;
         else queueData.push(data);
         if (!queueModal.classList.contains("hidden")) renderQueue();
+        if (!queueModal.classList.contains("hidden")) refreshProviderHealth();
         updateQueueBadge();
         if (data.status === "completed") {
             toast(`"${data.title || data.url}" downloaded`, "success");

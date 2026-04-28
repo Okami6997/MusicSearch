@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import time
 import traceback
 import uuid
 from collections import OrderedDict
@@ -138,6 +139,22 @@ class DownloadManager:
     def get_queue(self) -> list[dict]:
         with self._lock:
             return [t.to_dict() for t in self.tasks.values()]
+
+    def get_provider_health(self) -> list[dict]:
+        now = time.time()
+        providers = ["Tidal", "Spotify", "Deezer", "Qobuz", "Amazon", "SoundCloud", "YouTube"]
+        health = []
+        for name in providers:
+            key = name.lower()
+            backoff_until = self._source_backoff_until.get(key, 0)
+            retry_after = max(0, int(backoff_until - now))
+            health.append({
+                "name": name,
+                "status": "cooldown" if retry_after > 0 else "ready",
+                "retry_after_seconds": retry_after,
+                "last_error": self._source_last_error.get(key, ""),
+            })
+        return health
 
     def clear_completed(self):
         with self._lock:
