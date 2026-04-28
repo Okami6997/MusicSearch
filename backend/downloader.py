@@ -615,6 +615,14 @@ class DownloadManager:
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
         }
+        pref = self.preferred_source.lower()
+
+        # Preferred source is only allowed to reorder the primary providers.
+        # SoundCloud and YouTube remain fixed fallbacks after the normal sources.
+        if pref in order:
+            name, fn, has_data = order.pop(pref)
+            if has_data and not self._is_source_in_backoff(name):
+                sources.append((name, fn))
 
         # Then remaining sources that actually have data.
         with_data = []
