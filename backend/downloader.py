@@ -454,12 +454,11 @@ class DownloadManager:
         errors = []
         expected_sec = (task.duration_ms // 1000) if task.duration_ms > 0 else 0
 
-        print(f"[Download] '{task.title}' — available links: Tidal={bool(tidal_url)} Spotify={bool(spotify_url)} Deezer={bool(deezer_url)} Qobuz={bool(isrc)} Amazon={bool(amazon_url)} YouTube={bool(youtube_url)} SoundCloud={bool(soundcloud_url)}")
+        print(f"[Download] '{task.title}' — available links: Tidal={bool(links.get('tidal_url'))} Spotify={bool(links.get('spotify_url'))} Deezer={bool(links.get('deezer_url'))} Qobuz={bool(isrc)} Amazon={bool(links.get('amazon_url'))} YouTube={bool(links.get('youtube_url'))} SoundCloud={bool(links.get('soundcloud_url'))}")
         print(f"[Download] '{task.title}' — source order: {[n for n,_ in sources]}")
 
         for name, fn in sources:
             print(f"[Download] '{task.title}' — trying {name}…")
-            try:
             try:
                 path = fn(album_dir, filename, progress_cb)
                 # Validate duration to reject preview/sample clips before accepting
@@ -600,8 +599,6 @@ class DownloadManager:
         youtube_in_sources = any(n.lower() == "youtube" for n, _ in sources)
         if not youtube_in_sources and (bool(youtube_url) or bool(task.title and task.artist)):
             sources.append(("YouTube", youtube_fn))
-
-        return sources
 
         return sources
 
