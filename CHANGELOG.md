@@ -10,6 +10,8 @@ This release adds advanced search with per-field inputs (track, artist, album), 
 - **Search: Multi-source album results** — Albums now come from Spotify, Tidal, and Apple Music (previously Apple Music only). Spotify albums are fetched via the pathfinder `albumsV2` endpoint; Tidal albums are extracted from track search results. Deezer album search is wired up but currently geo-restricted.
 - **Search: Tidal integration** — Added `TidalSearchClient` with full track and album search via the spotisaver proxy API. Tidal results appear alongside other services in the unified track list.
 - **Search: Per-service health tracking** — Each concurrent search task reports its status (`ok`, `error`), error message, and latency. The aggregated `source_status` object is included in the API response and `search_done` SocketIO event.
+- **Download: Provider health and cooldown** — The download queue now tracks provider health, temporarily backs off services after repeated failures, and displays cooldown status with retry timing and last-error details in the queue UI.
+- **Settings: Persistent download preferences** — Preferred source, quality, lyrics, auto-resample, and output directory now persist across restarts via a local settings JSON file.
 - **Search: Retry with exponential backoff** — Transient HTTP failures (timeouts, 5xx) are retried up to 2 times with exponential backoff before marking a service as failed.
 - **UI: Section modals** — Clicking a section heading (Tracks, Artists, Albums) opens a full-screen modal with all items and infinite scroll (batches of 50). Replaces the old inline collapsible sections for a cleaner, unrestricted view.
 - **UI: Detail modal for albums/artists** — "View" button on album and artist rows opens a detail modal with cover art, title, and expandable track listing. Detail modal stacks above section modals (z-index 1100 vs 1000).
@@ -19,6 +21,8 @@ This release adds advanced search with per-field inputs (track, artist, album), 
 
 - **Search: Tidal API parameter fix** — Tidal proxy API requires `s=` (not `query=`) for the search term. Fixed in `TidalSearchClient.search_tracks()`.
 - **Search: Tidal response parsing** — Fixed handling of nested `data.items` response structure and dict-type artist values from the Tidal proxy API.
+- **Download: Preferred source ordering** — Fixed source ordering so the selected primary provider is tried first, while SoundCloud and YouTube remain fallback-only sources.
+- **Download: Amazon runtime crypto import** — Improved the Amazon downloader to import `cryptography` lazily and recover if the dependency is installed after the app has already started.
 - **Search: Apple Music always queried** — iTunes/Apple Music search was previously gated behind a fallback condition and only ran when all primary services failed. Now runs concurrently with all other services.
 - **Search: Album/artist service filtering** — Toggling a service filter (e.g., unchecking Apple Music) now correctly hides albums and artists from that service, not just tracks. Added `_applyServiceFiltersToItems()` for generic item filtering.
 - **UI: Detail modal hidden behind section modal** — Fixed z-index stacking so the album/artist detail modal always appears above the section modal when triggered from within it.

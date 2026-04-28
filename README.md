@@ -14,6 +14,7 @@ A web-based music search and download application. Search or paste any music pla
 - **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
 - **Album & Playlist Expansion** — Paste an album or playlist URL from Spotify, YouTube Music, or Amazon Music and expand it into individual tracks with a single-click "Download All" batch action
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
+- **Provider health and cooldown** — The queue detects failing services, backs them off temporarily, and shows retry timing and last-error info directly in the queue panel.
 - **Qobuz/Deezer Resolver Fallbacks** — Download resolvers use multiple provider endpoints with quality fallback for more resilient FLAC retrieval when a single upstream API is unavailable
 - **Lossless Audio** — FLAC (16-bit and 24-bit Hi-Res) from Tidal/Qobuz/Amazon; MP3 320kbps via yt-dlp from YouTube Music
 - **Auto-Resample to Hi-Res FLAC** — Every download is automatically resampled to 192kHz/24-bit FLAC using FFmpeg (toggle in Settings). Non-FLAC sources are converted; files already at target spec are skipped
@@ -26,6 +27,7 @@ A web-based music search and download application. Search or paste any music pla
 - **File Manager** — Browse audio files, view metadata, and batch rename using format templates
 - **Operation History** — SQLite-based history tracking downloads, resampling, renaming, and analysis operations
 - **Download Validation** — Duration-based validation to detect preview/sample files
+- **Persistent settings** — Download preferences now persist across restarts using a local settings file.
 - **Real-time Progress** — WebSocket-based download queue with live progress updates
 - **Dark UI** — Clean, responsive dark-themed web interface with tabbed navigation
 
