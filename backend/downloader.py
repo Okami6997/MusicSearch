@@ -615,13 +615,6 @@ class DownloadManager:
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
         }
-        pref = self.preferred_source.lower()
-
-        # Preferred source goes first if it has data
-        if pref in order:
-            name, fn, has_data = order.pop(pref)
-            if has_data:
-                sources.append((name, fn))
 
         # Then remaining sources that actually have data.
         with_data = []
