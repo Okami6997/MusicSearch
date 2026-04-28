@@ -558,10 +558,6 @@ class DownloadManager:
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
             "youtube": ("YouTube", youtube_fn,
                         bool(youtube_url) or bool(task.title and task.artist)),
-            # SoundCloud: only use the SoundCloud source when an actual
-            # SoundCloud URL is available — YouTube fallback belongs to the
-            # YouTube source, not to SoundCloud.
-            "soundcloud": ("SoundCloud", soundcloud_fn, bool(soundcloud_url)),
         }
         pref = self.preferred_source.lower()
 
@@ -589,13 +585,18 @@ class DownloadManager:
                 "tidal": ("Tidal", tidal_fn),
                 "spotify": ("Spotify", spotify_fn),
                 "deezer": ("Deezer", deezer_fn),
-                "soundcloud": ("SoundCloud", soundcloud_fn),
                 "qobuz": ("Qobuz", qobuz_fn),
                 "amazon": ("Amazon", amazon_fn),
                 "youtube": ("YouTube", youtube_fn),
             }
             if pref in fn_map:
                 sources.append(fn_map[pref])
+
+        # SoundCloud as a fallback — only when all other sources have no link.
+        # Uses YouTube.download_track as fallback, so effectively YouTube-as-SoundCloud.
+        soundcloud_in_sources = any(n.lower() == "soundcloud" for n, _ in sources)
+        if not soundcloud_in_sources and (bool(soundcloud_url) or bool(youtube_url) or bool(task.title and task.artist)):
+            sources.append(("SoundCloud", soundcloud_fn))
 
         return sources
 
