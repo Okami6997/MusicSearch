@@ -362,6 +362,7 @@ class DownloadManager:
                     task.progress = min(done / 5_000_000 * 100, 99)
                 self._notify(task)
 
+            print(f"[Download] Starting download for '{task.title}' — links: {links}")
             filepath = self._download(task, links, isrc, progress_cb)
 
             # Auto-resample to 192kHz/24-bit if enabled
@@ -453,7 +454,12 @@ class DownloadManager:
         errors = []
         expected_sec = (task.duration_ms // 1000) if task.duration_ms > 0 else 0
 
+        print(f"[Download] '{task.title}' — available links: Tidal={bool(tidal_url)} Spotify={bool(spotify_url)} Deezer={bool(deezer_url)} Qobuz={bool(isrc)} Amazon={bool(amazon_url)} YouTube={bool(youtube_url)} SoundCloud={bool(soundcloud_url)}")
+        print(f"[Download] '{task.title}' — source order: {[n for n,_ in sources]}")
+
         for name, fn in sources:
+            print(f"[Download] '{task.title}' — trying {name}…")
+            try:
             try:
                 path = fn(album_dir, filename, progress_cb)
                 # Validate duration to reject preview/sample clips before accepting
@@ -548,11 +554,14 @@ class DownloadManager:
             "tidal": ("Tidal", tidal_fn, bool(tidal_url)),
             "spotify": ("Spotify", spotify_fn, bool(spotify_url)),
             "deezer": ("Deezer", deezer_fn, bool(deezer_url)),
-            "soundcloud": ("SoundCloud", soundcloud_fn, bool(soundcloud_url) or bool(youtube_url) or bool(task.title and task.artist)),
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
             "youtube": ("YouTube", youtube_fn,
                         bool(youtube_url) or bool(task.title and task.artist)),
+            # SoundCloud: only use the SoundCloud source when an actual
+            # SoundCloud URL is available — YouTube fallback belongs to the
+            # YouTube source, not to SoundCloud.
+            "soundcloud": ("SoundCloud", soundcloud_fn, bool(soundcloud_url)),
         }
         pref = self.preferred_source.lower()
 
