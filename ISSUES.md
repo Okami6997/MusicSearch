@@ -32,6 +32,7 @@
 - [x] 30s DRM-free preview playback in search results — Play buttons on Deezer and iTunes tracks; shared audio element with auto-stop on new selection.
 - [x] Fix Docker search slowness from eventlet green DNS — Added `EVENTLET_NO_GREENDNS=yes` to Dockerfile and docker-compose; external DNS servers added to docker-compose.
 - [x] Search regression tracking: Tidal, Apple Music stability — Fixed Tidal search parameter (`s=` not `query=`), fixed Tidal response parsing (nested `data.items`, dict artist), moved Apple Music to always-concurrent, added retry/backoff and per-service health tracking. (GitHub: #27)
+- [x] Provider health and settings persistence — Added download queue provider health tracking with cooldowns, visible retry timing in the queue UI, and persistent UI settings via a local JSON file.
 - [x] Multi-source album search — Albums now returned from Spotify (pathfinder `albumsV2`), Tidal (extracted from track results), and Apple Music. Deezer album search wired but geo-restricted.
 - [x] Album/artist service filtering — Toggling a service filter now correctly hides/shows albums and artists from that service, not just tracks.
 - [x] Advanced search mode — Expand button on search bar reveals 3 dedicated fields (Track, Artist, Album) for more precise queries.
