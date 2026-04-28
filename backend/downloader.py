@@ -481,6 +481,7 @@ class DownloadManager:
                 task.source = name
                 return path
             except Exception as e:
+                print(f"[Download] '{task.title}' — {name} failed: {e}")
                 errors.append(f"{name}: {e}")
 
         raise ValueError(
