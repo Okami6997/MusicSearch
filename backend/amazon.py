@@ -1,5 +1,6 @@
 """Amazon Music downloader - downloads tracks via Amazon API proxy."""
 
+import hashlib
 import json
 import os
 import re
@@ -10,9 +11,34 @@ from urllib.parse import urlparse
 
 import requests
 
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+except Exception:
+    AESGCM = None
+
 
 class AmazonDownloader:
     """Download tracks from Amazon Music via API proxy."""
+
+    API_BASES = [
+        "https://amazon.spotbye.qzz.io/api",
+        "https://amzn.afkarxyz.qzz.io/api",
+    ]
+
+    _DEBUG_KEY_SEED = b"spotif" + b"lac:am" + b"azon:spotbye:api:v1"
+    _DEBUG_KEY_AAD = bytes([
+        0x61, 0x6D, 0x61, 0x7A, 0x6F, 0x6E, 0x7C, 0x73, 0x70, 0x6F, 0x74, 0x62,
+        0x79, 0x65, 0x7C, 0x64, 0x65, 0x62, 0x75, 0x67, 0x7C, 0x76, 0x31,
+    ])
+    _DEBUG_KEY_NONCE = bytes([
+        0x52, 0x1F, 0xA4, 0x9C, 0x13, 0x77, 0x5B, 0xE2, 0x81, 0x44, 0x90, 0x6D,
+    ])
+    _DEBUG_KEY_CIPHERTEXT_TAG = bytes([
+        0x5B, 0xF9, 0xC1, 0x2E, 0x58, 0xF8, 0x5B, 0xC0, 0x04, 0x68, 0x7E, 0xFF,
+        0x3D, 0xD6, 0x8B, 0xE3, 0x86, 0x49, 0x6C, 0xFD, 0xC1, 0x49, 0x0B, 0xFB,
+        0x6C, 0x21, 0x98, 0x51, 0xF2, 0x38, 0x4B, 0x4A, 0x23, 0xE1, 0xC6, 0xD7,
+        0x65, 0x7F, 0xFB, 0xA1,
+    ])
 
     UA = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -24,6 +50,23 @@ class AmazonDownloader:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        self._debug_key: str | None = None
+
+    def _get_debug_key(self) -> str:
+        if self._debug_key is not None:
+            return self._debug_key
+        if AESGCM is None:
+            raise ValueError("Amazon spotbye debug key support unavailable")
+
+        key = hashlib.sha256(self._DEBUG_KEY_SEED).digest()
+        aesgcm = AESGCM(key)
+        plaintext = aesgcm.decrypt(
+            self._DEBUG_KEY_NONCE,
+            self._DEBUG_KEY_CIPHERTEXT_TAG,
+            self._DEBUG_KEY_AAD,
+        )
+        self._debug_key = plaintext.decode()
+        return self._debug_key
 
     def extract_asin(self, url: str) -> str:
         m = self.ASIN_RE.search(url)
@@ -32,30 +75,39 @@ class AmazonDownloader:
         return m.group(1)
 
     def get_stream(self, asin: str) -> dict:
-        for attempt in range(3):
-            try:
-                r = self.session.get(
-                    f"https://amzn.afkarxyz.qzz.io/api/track/{asin}", timeout=60
-                )
-                if r.status_code == 401:
-                    raise ValueError(
-                        "Amazon proxy API returned 401 Unauthorized - "
-                        "proxy credentials may have expired"
+        errors = []
+        for api_base in self.API_BASES:
+            for attempt in range(3):
+                try:
+                    headers = {}
+                    if "spotbye" in api_base:
+                        headers["X-Debug-Key"] = self._get_debug_key()
+                    r = self.session.get(
+                        f"{api_base}/track/{asin}",
+                        headers=headers,
+                        timeout=60,
                     )
-                r.raise_for_status()
-                d = r.json()
-                if d.get("error"):
-                    raise ValueError(f"Amazon API error: {d['error']}")
-                if not d.get("streamUrl"):
-                    raise ValueError("No stream URL from Amazon API")
-                return {"stream_url": d["streamUrl"],
-                        "decryption_key": d.get("decryptionKey", "")}
-            except (requests.ConnectionError, requests.Timeout) as e:
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
-                    continue
-                raise ValueError(f"Amazon proxy API unavailable: {e}")
-        raise ValueError("Amazon proxy API failed after retries")
+                    if r.status_code == 401:
+                        raise ValueError("Amazon proxy API returned 401 Unauthorized")
+                    r.raise_for_status()
+                    d = r.json()
+                    if d.get("error"):
+                        raise ValueError(f"Amazon API error: {d['error']}")
+                    if not d.get("streamUrl"):
+                        raise ValueError("No stream URL from Amazon API")
+                    return {
+                        "stream_url": d["streamUrl"],
+                        "decryption_key": d.get("decryptionKey", ""),
+                    }
+                except (requests.ConnectionError, requests.Timeout) as e:
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
+                        continue
+                    errors.append(f"{api_base}: unavailable: {e}")
+                except Exception as e:
+                    errors.append(f"{api_base}: {e}")
+                    break
+        raise ValueError("Amazon proxy API failed: " + "; ".join(errors))
 
     def fetch_track_metadata(self, amazon_url_or_asin: str) -> dict:
         asin = self.extract_asin(amazon_url_or_asin)

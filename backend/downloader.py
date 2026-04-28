@@ -266,6 +266,43 @@ class DownloadManager:
                         task.album = task.album or sl.get("album", "")
                 except Exception:
                     pass
+
+            if not isrc and links.get("deezer_url"):
+                try:
+                    deezer_track_id = self.deezer.extract_track_id(links["deezer_url"])
+                    deezer_meta = self.deezer.fetch_track(deezer_track_id)
+                    deezer_isrc = (deezer_meta.get("isrc") or "").upper().strip()
+                    if deezer_isrc:
+                        isrc = deezer_isrc
+                    if not task.title:
+                        task.title = deezer_meta.get("title", "") or task.title
+                    if not task.artist:
+                        task.artist = deezer_meta.get("artist", {}).get("name", "") or task.artist
+                    if not task.album:
+                        task.album = deezer_meta.get("album", {}).get("title", "") or task.album
+                    if not task.cover_url:
+                        task.cover_url = (
+                            deezer_meta.get("album", {}).get("cover_xl")
+                            or deezer_meta.get("album", {}).get("cover_big")
+                            or deezer_meta.get("album", {}).get("cover_medium")
+                            or task.cover_url
+                        )
+                    if not task.duration_ms and deezer_meta.get("duration"):
+                        task.duration_ms = int((deezer_meta.get("duration") or 0) * 1000)
+                except Exception:
+                    pass
+
+            if not isrc and links.get("amazon_url"):
+                try:
+                    ameta = self.amazon.fetch_track_metadata(links["amazon_url"])
+                    if ameta.get("isrc"):
+                        isrc = ameta.get("isrc", "")
+                    task.title = ameta.get("title", "") or task.title
+                    task.artist = ameta.get("artist", "") or task.artist
+                    task.album = ameta.get("album", "") or task.album
+                    task.year = ameta.get("year", "") or task.year
+                except Exception:
+                    pass
             elif isrc:
                 # ISRC only — resolve cross-platform URLs via Deezer + SongLink (with cache)
                 links["isrc"] = isrc
@@ -499,9 +536,7 @@ class DownloadManager:
         def tidal_fn(d, f, cb):
             if not tidal_url:
                 raise ValueError("No Tidal link")
-            tid = self.tidal.parse_track_id(tidal_url)
-            dl = self.tidal.get_download_url(tid, self.quality)
-            return self.tidal.download_file(dl, os.path.join(d, f), cb)
+            return self.tidal.download_track(tidal_url, d, self.quality, f, cb)
 
         def spotify_fn(d, f, cb):
             if not spotify_url:
@@ -565,29 +600,12 @@ class DownloadManager:
             if has_data:
                 sources.append((name, fn))
 
-        # Then remaining sources that have data, then those that don't
+        # Then remaining sources that actually have data.
         with_data = []
-        without_data = []
         for key, (name, fn, has_data) in order.items():
             if has_data:
                 with_data.append((name, fn))
-            else:
-                without_data.append((name, fn))
         sources.extend(with_data)
-        sources.extend(without_data)
-
-        # Ensure preferred source is always in the list (even without data)
-        pref_in_sources = any(n.lower() == pref for n, _ in sources)
-        if not pref_in_sources:
-            fn_map = {
-                "tidal": ("Tidal", tidal_fn),
-                "spotify": ("Spotify", spotify_fn),
-                "deezer": ("Deezer", deezer_fn),
-                "qobuz": ("Qobuz", qobuz_fn),
-                "amazon": ("Amazon", amazon_fn),
-            }
-            if pref in fn_map:
-                sources.append(fn_map[pref])
 
         # SoundCloud fallback — appended after all other sources.
         # Uses YouTube as its fallback internally.
