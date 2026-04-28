@@ -556,8 +556,6 @@ class DownloadManager:
             "deezer": ("Deezer", deezer_fn, bool(deezer_url)),
             "qobuz": ("Qobuz", qobuz_fn, bool(isrc)),
             "amazon": ("Amazon", amazon_fn, bool(amazon_url)),
-            "youtube": ("YouTube", youtube_fn,
-                        bool(youtube_url) or bool(task.title and task.artist)),
         }
         pref = self.preferred_source.lower()
 
@@ -587,16 +585,23 @@ class DownloadManager:
                 "deezer": ("Deezer", deezer_fn),
                 "qobuz": ("Qobuz", qobuz_fn),
                 "amazon": ("Amazon", amazon_fn),
-                "youtube": ("YouTube", youtube_fn),
             }
             if pref in fn_map:
                 sources.append(fn_map[pref])
 
-        # SoundCloud as a fallback — only when all other sources have no link.
-        # Uses YouTube.download_track as fallback, so effectively YouTube-as-SoundCloud.
+        # SoundCloud fallback — appended after all other sources.
+        # Uses YouTube as its fallback internally.
         soundcloud_in_sources = any(n.lower() == "soundcloud" for n, _ in sources)
         if not soundcloud_in_sources and (bool(soundcloud_url) or bool(youtube_url) or bool(task.title and task.artist)):
             sources.append(("SoundCloud", soundcloud_fn))
+
+        # YouTube last resort — only appended after all other sources including SoundCloud.
+        # Uses title+artist search when no youtube_url is available.
+        youtube_in_sources = any(n.lower() == "youtube" for n, _ in sources)
+        if not youtube_in_sources and (bool(youtube_url) or bool(task.title and task.artist)):
+            sources.append(("YouTube", youtube_fn))
+
+        return sources
 
         return sources
 
