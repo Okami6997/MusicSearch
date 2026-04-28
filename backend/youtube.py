@@ -557,7 +557,7 @@ class YouTubeDownloader:
                 if chunk:
                     f.write(chunk)
                     done += len(chunk)
-                    if progress_cb and total:
+                    if progress_cb:
                         progress_cb(done, total)
         return output_path
 

@@ -209,7 +209,7 @@ class SpotifyDownloader:
                 if chunk:
                     f.write(chunk)
                     done += len(chunk)
-                    if progress_cb and total:
+                    if progress_cb:
                         progress_cb(done, total)
 
         os.replace(tmp, output_path)

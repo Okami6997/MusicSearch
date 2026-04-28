@@ -247,7 +247,7 @@ class AmazonDownloader:
             for chunk in resp.iter_content(65536):
                 f.write(chunk)
                 done += len(chunk)
-                if progress_cb and total:
+                if progress_cb:
                     progress_cb(done, total)
 
         codec = self._codec(tmp)

@@ -175,7 +175,7 @@ class QobuzDownloader:
                         downloaded += len(chunk)
                         cb = progress_cb or self.progress_callback
                         if cb:
-                            cb(downloaded, total)
+                            cb(downloaded, total or 0)
             os.replace(temp_path, filepath)
         finally:
             if os.path.exists(temp_path):
