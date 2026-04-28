@@ -17,6 +17,18 @@ except Exception:
     AESGCM = None
 
 
+def _get_aesgcm_class():
+    global AESGCM
+    if AESGCM is not None:
+        return AESGCM
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM as imported_aesgcm
+    except Exception:
+        return None
+    AESGCM = imported_aesgcm
+    return AESGCM
+
+
 class AmazonDownloader:
     """Download tracks from Amazon Music via API proxy."""
 
@@ -59,13 +71,14 @@ class AmazonDownloader:
         if env_key:
             self._debug_key = env_key
             return self._debug_key
-        if AESGCM is None:
+        aesgcm_class = _get_aesgcm_class()
+        if aesgcm_class is None:
             raise ValueError(
                 "Amazon spotbye debug key support unavailable; set AMAZON_DEBUG_KEY or install cryptography"
             )
 
         key = hashlib.sha256(self._DEBUG_KEY_SEED).digest()
-        aesgcm = AESGCM(key)
+        aesgcm = aesgcm_class(key)
         plaintext = aesgcm.decrypt(
             self._DEBUG_KEY_NONCE,
             self._DEBUG_KEY_CIPHERTEXT_TAG,
