@@ -354,7 +354,12 @@ class DownloadManager:
             self._notify(task)
 
             def progress_cb(done, total):
-                task.progress = (done / total * 100) if total else 0
+                if total:
+                    task.progress = done / total * 100
+                else:
+                    # No Content-Length — estimate progress assuming a typical
+                    # track size (~5 MB). Cap at 99 so the bar moves visibly.
+                    task.progress = min(done / 5_000_000 * 100, 99)
                 self._notify(task)
 
             filepath = self._download(task, links, isrc, progress_cb)
