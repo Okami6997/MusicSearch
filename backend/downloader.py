@@ -107,6 +107,8 @@ class DownloadManager:
         self._sl_cache: dict[str, dict] = {}
         self._isrc_cache: dict[str, dict] = {}
         self._max_workers = 5
+        self._source_backoff_until: dict[str, float] = {}
+        self._source_last_error: dict[str, str] = {}
         # Batch ordering: buffer completed tasks until they can be flushed in seq order
         self._batch_next_seq: dict[str, int] = {}
         self._batch_buffer: dict[str, dict[int, tuple]] = {}  # bid -> {seq: (task, filepath)}
@@ -401,6 +403,7 @@ class DownloadManager:
 
             print(f"[Download] Starting download for '{task.title}' — links: {links}")
             filepath = self._download(task, links, isrc, progress_cb)
+            task.error = ""
 
             # Auto-resample to 192kHz/24-bit if enabled
             if self.auto_resample:
@@ -519,6 +522,9 @@ class DownloadManager:
                 return path
             except Exception as e:
                 print(f"[Download] '{task.title}' — {name} failed: {e}")
+                self._record_source_failure(name, str(e))
+                task.error = f"{name} failed, trying next source"
+                self._notify(task)
                 errors.append(f"{name}: {e}")
 
         raise ValueError(
@@ -603,9 +609,15 @@ class DownloadManager:
         # Then remaining sources that actually have data.
         with_data = []
         for key, (name, fn, has_data) in order.items():
-            if has_data:
+            if has_data and not self._is_source_in_backoff(name):
                 with_data.append((name, fn))
         sources.extend(with_data)
+
+        # Providers in cooldown are appended after healthy primaries and fallback-only sources.
+        cooled_down = []
+        for key, (name, fn, has_data) in order.items():
+            if has_data and self._is_source_in_backoff(name):
+                cooled_down.append((name, fn))
 
         # SoundCloud fallback — appended after all other sources.
         # Uses YouTube as its fallback internally.
@@ -619,7 +631,42 @@ class DownloadManager:
         if not youtube_in_sources and (bool(youtube_url) or bool(task.title and task.artist)):
             sources.append(("YouTube", youtube_fn))
 
+        sources.extend(cooled_down)
+
         return sources
+
+    def _is_source_in_backoff(self, source_name: str) -> bool:
+        key = source_name.lower()
+        return self._source_backoff_until.get(key, 0) > time.time()
+
+    def _record_source_failure(self, source_name: str, error_message: str):
+        cooldown = self._source_cooldown_seconds(error_message)
+        key = source_name.lower()
+        self._source_last_error[key] = error_message
+        if cooldown > 0:
+            self._source_backoff_until[key] = time.time() + cooldown
+
+    @staticmethod
+    def _source_cooldown_seconds(error_message: str) -> int:
+        message = error_message.lower()
+        if any(token in message for token in (
+            "failed to resolve",
+            "name resolution",
+            "service unavailable",
+            "bad gateway",
+            "read timed out",
+            "connection",
+            "forbidden",
+            "unauthorized",
+            "token refresh failed",
+            "expecting value",
+            "invalid json",
+            "received html",
+            "support unavailable",
+            "user authentication is required",
+        )):
+            return 15 * 60
+        return 0
 
     def _flush_batch_completion(self, task: DownloadTask, failed: bool = False):
         """Buffer a completed/failed batch task and flush all consecutive
