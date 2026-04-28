@@ -55,8 +55,14 @@ class AmazonDownloader:
     def _get_debug_key(self) -> str:
         if self._debug_key is not None:
             return self._debug_key
+        env_key = os.environ.get("AMAZON_DEBUG_KEY", "").strip()
+        if env_key:
+            self._debug_key = env_key
+            return self._debug_key
         if AESGCM is None:
-            raise ValueError("Amazon spotbye debug key support unavailable")
+            raise ValueError(
+                "Amazon spotbye debug key support unavailable; set AMAZON_DEBUG_KEY or install cryptography"
+            )
 
         key = hashlib.sha256(self._DEBUG_KEY_SEED).digest()
         aesgcm = AESGCM(key)
