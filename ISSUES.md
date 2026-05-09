@@ -40,6 +40,8 @@
 - [x] Detail modal for albums/artists — "View" button on album/artist rows opens a stacking detail modal with cover art and track listing.
 - [x] View album from artist expand — Artist detail modal now includes a "View" button for each album alongside "Download Album".
 - [x] Detail modal z-index fix — Detail modal properly stacks above section modal when opened from within it.
+- [x] View Album: Amazon source support — Album view from search detail modal now works for Amazon Music alongside Qobuz and Apple Music sources.
+- [x] URL Paste: Amazon query-style album URLs — Amazon album links with `trackAsin` query parameter are now correctly parsed and recognized.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads

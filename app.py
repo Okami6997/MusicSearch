@@ -927,17 +927,82 @@ def search():
 def search_expand():
     """Fetch expandable details for album tracks or artist albums."""
     kind = request.args.get("kind", "").strip().lower()  # album | artist
-    source = request.args.get("source", "").strip().lower()  # qobuz | itunes
+    source = request.args.get("source", "").strip().lower()
     item_id = request.args.get("id", "").strip()
+
+    if source in ("apple", "apple_music"):
+        source = "itunes"
+    elif source == "youtube_music":
+        source = "youtube"
 
     if kind not in ("album", "artist"):
         return jsonify({"error": "kind must be album or artist"}), 400
-    if source not in ("qobuz", "itunes"):
-        return jsonify({"error": "source must be qobuz or itunes"}), 400
     if not item_id:
         return jsonify({"error": "id required"}), 400
 
+    album_sources = {"qobuz", "itunes", "spotify", "amazon", "youtube", "deezer"}
+    artist_sources = {"qobuz", "itunes"}
+
+    if kind == "album" and source not in album_sources:
+        return jsonify({"error": f"source must be one of: {', '.join(sorted(album_sources))}"}), 400
+    if kind == "artist" and source not in artist_sources:
+        return jsonify({"error": f"source must be one of: {', '.join(sorted(artist_sources))}"}), 400
+
     try:
+        if kind == "album" and source == "spotify":
+            from backend.spotify import SpotifyDownloader
+
+            tracks = SpotifyDownloader().expand_album(item_id)
+            return jsonify({"kind": kind, "source": source, "items": tracks or []})
+
+        if kind == "album" and source == "youtube":
+            from backend.youtube import YouTubeDownloader
+
+            tracks = YouTubeDownloader().expand_album(item_id)
+            return jsonify({"kind": kind, "source": source, "items": tracks or []})
+
+        if kind == "album" and source == "amazon":
+            from backend.amazon import AmazonDownloader
+
+            amazon = AmazonDownloader()
+            album_url = item_id if item_id.startswith("http") else f"https://music.amazon.com/albums/{item_id}"
+            tracks = amazon.expand_album(album_url)
+            return jsonify({"kind": kind, "source": source, "items": tracks or []})
+
+        if kind == "album" and source == "deezer":
+            album_r = http_requests.get(f"https://api.deezer.com/album/{item_id}", timeout=10)
+            album_r.raise_for_status()
+            album = album_r.json() or {}
+
+            tracks_r = http_requests.get(f"https://api.deezer.com/album/{item_id}/tracks", timeout=15)
+            tracks_r.raise_for_status()
+            rows = tracks_r.json().get("data", []) or []
+
+            album_title = album.get("title", "")
+            album_artist = album.get("artist", {}).get("name", "")
+            album_cover = album.get("cover_big", "")
+            album_year = (album.get("release_date") or "")[:4]
+            total_tracks = int(album.get("nb_tracks", 0) or len(rows))
+
+            items = []
+            for t in rows:
+                items.append({
+                    "id": t.get("id"),
+                    "title": t.get("title", ""),
+                    "artist": t.get("artist", {}).get("name", "") or album_artist,
+                    "duration_ms": int((t.get("duration", 0) or 0) * 1000),
+                    "track_number": int(t.get("track_position", 0) or 0),
+                    "disc_number": int(t.get("disk_number", 0) or 1),
+                    "total_tracks": total_tracks,
+                    "album": album_title,
+                    "cover_url": album_cover,
+                    "year": album_year,
+                    "isrc": t.get("isrc", ""),
+                    "url": t.get("link", ""),
+                    "source": "deezer",
+                })
+            return jsonify({"kind": kind, "source": source, "items": items})
+
         if source == "qobuz":
             from backend.qobuz import QobuzDownloader
             qobuz = QobuzDownloader()
@@ -1637,6 +1702,38 @@ def files_audio():
     path = request.args.get("path", settings["output_dir"])
     try:
         data = filemanager.list_audio_files(path)
+        total = len(data)
+        offset = request.args.get("offset", 0, type=int)
+        limit = request.args.get("limit", 50, type=int)
+        page = data[offset: offset + limit]
+        return jsonify({
+            "files": page,
+            "total": total,
+            "has_more": (offset + limit) < total,
+            "offset": offset,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/files/search", methods=["GET"])
+def files_search():
+    """Search audio files by filename and metadata fields."""
+    path = request.args.get("path", settings["output_dir"])
+    query = request.args.get("q", "").strip()
+    metadata_filters = {
+        "title": request.args.get("title", "").strip(),
+        "artist": request.args.get("artist", "").strip(),
+        "album": request.args.get("album", "").strip(),
+        "album_artist": request.args.get("album_artist", "").strip(),
+        "year": request.args.get("year", "").strip(),
+    }
+    has_filters = any(v for v in metadata_filters.values())
+    if not query and not has_filters:
+        return jsonify({"error": "q or at least one metadata filter is required"}), 400
+
+    try:
+        data = filemanager.search_audio_files(path, query, metadata_filters)
         total = len(data)
         offset = request.args.get("offset", 0, type=int)
         limit = request.args.get("limit", 50, type=int)

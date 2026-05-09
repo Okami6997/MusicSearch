@@ -53,6 +53,80 @@ def list_audio_files(dir_path: str) -> list[dict]:
     return result
 
 
+def search_audio_files(dir_path: str, query: str = "", metadata_filters: dict | None = None) -> list[dict]:
+    """Search audio files by filename and metadata fields.
+
+    Supported metadata filter keys: title, artist, album, album_artist, year.
+    """
+    if not os.path.isdir(dir_path):
+        raise FileNotFoundError(f"Directory not found: {dir_path}")
+
+    q = (query or "").strip().lower()
+    raw_filters = metadata_filters or {}
+    filters = {
+        k: str(v).strip().lower()
+        for k, v in raw_filters.items()
+        if v is not None and str(v).strip()
+    }
+
+    def _meta_search_map(meta: dict) -> dict[str, str]:
+        return {
+            "title": str(meta.get("title", "") or "").lower(),
+            "artist": str(meta.get("artist", "") or "").lower(),
+            "album": str(meta.get("album", "") or "").lower(),
+            "album_artist": str(meta.get("album_artist", "") or "").lower(),
+            "year": str(meta.get("year", "") or "").lower(),
+            "track_number": str(meta.get("track_number", "") or "").lower(),
+            "disc_number": str(meta.get("disc_number", "") or "").lower(),
+        }
+
+    needs_metadata = bool(q or filters)
+    results = []
+    for root, _, files in os.walk(dir_path):
+        for name in sorted(files):
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in AUDIO_EXTS:
+                continue
+
+            fp = os.path.join(root, name)
+            meta = _empty_meta()
+            meta_map = {}
+            if needs_metadata:
+                try:
+                    meta = read_audio_metadata(fp)
+                except Exception:
+                    meta = _empty_meta()
+                meta_map = _meta_search_map(meta)
+
+            matched_fields = []
+            if q:
+                if q in name.lower():
+                    matched_fields.append("name")
+                for field, value in meta_map.items():
+                    if value and q in value:
+                        matched_fields.append(field)
+                if not matched_fields:
+                    continue
+
+            filter_failed = False
+            for key, value in filters.items():
+                if value not in meta_map.get(key, ""):
+                    filter_failed = True
+                    break
+            if filter_failed:
+                continue
+
+            results.append({
+                "name": name,
+                "path": fp,
+                "is_dir": False,
+                "size": os.path.getsize(fp),
+                "metadata": meta,
+                "matched_fields": matched_fields,
+            })
+    return results
+
+
 def read_audio_metadata(filepath: str) -> dict:
     """Read metadata from an audio file (FLAC, MP3, M4A)."""
     if not os.path.isfile(filepath):

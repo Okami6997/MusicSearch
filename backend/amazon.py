@@ -7,7 +7,7 @@ import re
 import subprocess
 import time
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -88,6 +88,17 @@ class AmazonDownloader:
         return self._debug_key
 
     def extract_asin(self, url: str) -> str:
+        parsed = urlparse(url)
+        q = parse_qs(parsed.query)
+        track_asin = (q.get("trackAsin") or q.get("trackasin") or [""])[0]
+        if self.ASIN_RE.fullmatch(track_asin or ""):
+            return track_asin
+
+        path = parsed.path or ""
+        m_track = re.search(r"/(?:tracks|songs)/(B[0-9A-Z]{9})", path)
+        if m_track:
+            return m_track.group(1)
+
         m = self.ASIN_RE.search(url)
         if not m:
             raise ValueError(f"No ASIN in URL: {url}")

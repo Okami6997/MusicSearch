@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.4.1 (Unreleased)
+
+### Bug Fixes
+
+- **URL Paste: Amazon query-style album URLs** — Amazon album links using query parameters (e.g., `?trackAsin=B0FFGW1Y1N`) are now correctly parsed as track links instead of being misclassified as album links. URL parser now extracts `trackAsin` query parameter and detects track ASINs robustly. Applies to URLs like `https://music.amazon.in/albums/B0FFGV7MKD?trackAsin=B0FFGW1Y1N`.
+- **View Album: Amazon source now supported** — Album view from search results (detail modal) now works for Amazon Music albums, not just Qobuz/Apple Music. Added album expansion handlers for Amazon, YouTube, Spotify, and Deezer in the `/api/search/expand` endpoint. Error message now lists all supported sources instead of hardcoding "qobuz or itunes".
+
+### Files Changed
+
+- `app.py` — Relaxed source validation in `search_expand()` endpoint; now allows `amazon`, `youtube`, `spotify`, `deezer` for album expansion alongside `qobuz` and `itunes`; added album expansion handlers for all four sources with proper metadata extraction; added source alias normalization (`apple_music` → `itunes`, `youtube_music` → `youtube`)
+- `backend/songlink.py` — Added `parse_qs`, `urlparse` imports; enhanced `parse_music_url()` to detect Amazon track ASINs from `trackAsin` query parameter as well as URL path; added `_amazon_track_asin_from_url()` helper to extract ASIN from both URL path and query params; updated `_norm_amazon()` to use the new helper for robust track URL normalization; updated misresolved-track detection to recognize query-style Amazon URLs
+- `backend/amazon.py` — Added `parse_qs`, `urlparse` imports; enhanced `extract_asin()` to prioritize explicit `trackAsin` query parameter over album ASIN extraction, handling URL query strings robustly
+
+---
+
 ## v1.4.0 (Unreleased)
 
 This release adds advanced search with per-field inputs (track, artist, album), multi-source album search (Spotify, Tidal, Deezer), Tidal search integration, retry/backoff for transient failures, per-service health tracking, service-aware album/artist filtering, and a full modal-based results UI.

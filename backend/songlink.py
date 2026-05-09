@@ -1,6 +1,8 @@
 """SongLink client for resolving any music URL to other platforms."""
 
 import re
+from urllib.parse import parse_qs, urlparse
+
 import requests
 
 UA = (
@@ -46,12 +48,16 @@ def parse_music_url(url: str) -> dict:
         m = AMAZON_TRACK.search(url) or AMAZON_ALBUM_TRACK.search(url)
         if m:
             return {"platform": "amazon", "type": "track", "id": m.group(1)}
+
+        parsed = urlparse(url)
+        q = parse_qs(parsed.query)
+        track_asin = (q.get("trackAsin") or q.get("trackasin") or [""])[0]
+        if re.fullmatch(r"B[0-9A-Z]{9}", track_asin or ""):
+            return {"platform": "amazon", "type": "track", "id": track_asin}
+
         m = re.search(r"/albums/([A-Z0-9]{10})", url)
         if m:
             return {"platform": "amazon", "type": "album", "id": m.group(1)}
-        m = re.search(r"/playlists/([A-Z0-9]{10})", url)
-        if m:
-            return {"platform": "amazon", "type": "playlist", "id": m.group(1)}
         m = re.search(r"/playlists/([A-Z0-9]{10})", url)
         if m:
             return {"platform": "amazon", "type": "playlist", "id": m.group(1)}
@@ -126,7 +132,7 @@ class SongLinkClient:
         if misresolved:
             # SongLink returned album-level data for a track URL.
             # Correct the Amazon URL and clear all album-level links / metadata.
-            amazon_url = self._norm_amazon(url) if AMAZON_TRACK.search(url) else ""
+            amazon_url = self._norm_amazon(url) if self._amazon_track_asin_from_url(url) else ""
             return {
                 "tidal_url": "",
                 "amazon_url": amazon_url,
@@ -175,7 +181,7 @@ class SongLinkClient:
         if misresolved:
             # SongLink resolved a track URL to album-level data.
             # Return only the corrected Amazon track URL; clear all album-level links.
-            amazon = self._norm_amazon(_check_url) if AMAZON_TRACK.search(_check_url) else ""
+            amazon = self._norm_amazon(_check_url) if self._amazon_track_asin_from_url(_check_url) else ""
             youtube = links.get("youtube_url", "")
             spotify = links.get("spotify_url", "")
             return {
@@ -297,7 +303,10 @@ class SongLinkClient:
         type 'album' and no ISRC being found.
         """
         input_is_track = bool(
-            AMAZON_TRACK.search(url) or TIDAL_TRACK.search(url) or DEEZER_TRACK.search(url)
+            AMAZON_TRACK.search(url)
+            or SongLinkClient._amazon_track_asin_from_url(url)
+            or TIDAL_TRACK.search(url)
+            or DEEZER_TRACK.search(url)
         )
         if not input_is_track:
             return False
@@ -307,10 +316,25 @@ class SongLinkClient:
         return bool(entities) and all(e.get("type") == "album" for e in entities.values())
 
     @staticmethod
-    def _norm_amazon(url: str) -> str:
+    def _amazon_track_asin_from_url(url: str) -> str:
         if not url:
             return ""
         m = AMAZON_ALBUM_TRACK.search(url) or AMAZON_TRACK.search(url)
         if m:
-            return f"https://music.amazon.com/tracks/{m.group(1)}"
+            return m.group(1)
+
+        parsed = urlparse(url)
+        q = parse_qs(parsed.query)
+        track_asin = (q.get("trackAsin") or q.get("trackasin") or [""])[0]
+        if re.fullmatch(r"B[0-9A-Z]{9}", track_asin or ""):
+            return track_asin
+        return ""
+
+    @staticmethod
+    def _norm_amazon(url: str) -> str:
+        if not url:
+            return ""
+        track_asin = SongLinkClient._amazon_track_asin_from_url(url)
+        if track_asin:
+            return f"https://music.amazon.com/tracks/{track_asin}"
         return url

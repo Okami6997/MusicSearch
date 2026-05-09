@@ -1051,16 +1051,92 @@
     }
 
     // ── File Manager ────────────────────────────────────────
+    let filesSearchState = {
+        active: false,
+        criteria: { q: "", title: "", artist: "", album: "", year: "" },
+        offset: 0,
+        loading: false,
+        hasMore: false,
+    };
+
     $("#btn-load-files").addEventListener("click", loadFiles);
+    $("#btn-search-files").addEventListener("click", searchFiles);
+    $("#btn-clear-files-search").addEventListener("click", clearFilesSearch);
     $("#btn-preview-rename").addEventListener("click", previewRename);
     $("#btn-rename").addEventListener("click", doRename);
     $("#btn-delete-files").addEventListener("click", deleteSelectedFiles);
+
+    ["#files-search-q", "#files-search-title", "#files-search-artist", "#files-search-album", "#files-search-year"].forEach((selector) => {
+        const el = $(selector);
+        if (!el) return;
+        el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") searchFiles();
+        });
+    });
+
+    function getFileSearchCriteria() {
+        return {
+            q: $("#files-search-q")?.value.trim() || "",
+            title: $("#files-search-title")?.value.trim() || "",
+            artist: $("#files-search-artist")?.value.trim() || "",
+            album: $("#files-search-album")?.value.trim() || "",
+            year: $("#files-search-year")?.value.trim() || "",
+        };
+    }
+
+    function hasFileSearchCriteria(criteria) {
+        return !!(criteria.q || criteria.title || criteria.artist || criteria.album || criteria.year);
+    }
+
+    function buildFileSearchQuery(path, criteria, offset = 0, limit = 50) {
+        const params = new URLSearchParams({
+            path,
+            offset: String(offset),
+            limit: String(limit),
+        });
+        Object.entries(criteria).forEach(([key, val]) => {
+            if (val) params.set(key, val);
+        });
+        return `/api/files/search?${params.toString()}`;
+    }
+
+    function renderFileMetaSummary(file) {
+        const m = file.metadata || {};
+        const parts = [];
+        if (m.artist) parts.push(`Artist: ${esc(m.artist)}`);
+        if (m.title) parts.push(`Title: ${esc(m.title)}`);
+        if (m.album) parts.push(`Album: ${esc(m.album)}`);
+        if (m.year) parts.push(`Year: ${esc(String(m.year))}`);
+        const matched = Array.isArray(file.matched_fields) && file.matched_fields.length
+            ? `<span class="file-match-fields">Matched: ${esc(file.matched_fields.join(", "))}</span>`
+            : "";
+        if (!parts.length && !matched) return "";
+        const line = parts.join(" · ");
+        return `<span class="file-meta-line">${line}${line && matched ? " · " : ""}${matched}</span>`;
+    }
+
+    function renderFileRow(file, index) {
+        return `
+            <div class="file-row">
+                <label class="checkbox-label" style="flex-shrink:0">
+                    <input type="checkbox" class="file-check" data-index="${index}" >
+                </label>
+                <span class="file-icon">♪</span>
+                <span class="file-name-wrap">
+                    <span class="file-name" onclick="window.sfShowFileMeta('${esc(file.path)}')" style="cursor:pointer">${esc(file.name)}</span>
+                    ${renderFileMetaSummary(file)}
+                </span>
+                <span class="file-size">${fmtSize(file.size)}</span>
+            </div>
+        `;
+    }
 
     async function loadFiles() {
         const path = $("#files-path").value.trim();
         if (!path) return;
         try {
-            _unwatchSentinel('files-sentinel');
+            _unwatchSentinel("files-sentinel");
+            filesSearchState.active = false;
             filesState = { path, offset: 0, loading: false, hasMore: false };
             loadedAudioFiles = [];
             const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(path)}&offset=0&limit=50`);
@@ -1071,17 +1147,68 @@
             filesState.offset = files.length;
             filesState.hasMore = data.has_more;
             renderFilesList(files);
-            if (filesState.hasMore) _watchSentinel('files-sentinel', loadMoreFiles);
+            if (filesState.hasMore) _watchSentinel("files-sentinel", loadMoreFiles);
         } catch (e) {
             toast(e.message, "error");
         }
     }
 
+    async function searchFiles() {
+        const path = $("#files-path").value.trim();
+        if (!path) {
+            toast("Enter a directory path first", "error");
+            return;
+        }
+
+        const criteria = getFileSearchCriteria();
+        if (!hasFileSearchCriteria(criteria)) {
+            toast("Enter at least one search term or metadata filter", "error");
+            return;
+        }
+
+        try {
+            _unwatchSentinel("files-sentinel");
+            loadedAudioFiles = [];
+            filesState.path = path;
+            filesSearchState = {
+                active: true,
+                criteria,
+                offset: 0,
+                loading: false,
+                hasMore: false,
+            };
+
+            const resp = await fetch(buildFileSearchQuery(path, criteria, 0, 50));
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+
+            const files = data.files || [];
+            loadedAudioFiles = files.map((f) => f.path);
+            filesSearchState.offset = files.length;
+            filesSearchState.hasMore = data.has_more;
+            renderFilesList(files);
+            if (filesSearchState.hasMore) _watchSentinel("files-sentinel", loadMoreFileSearch);
+        } catch (e) {
+            toast(e.message, "error");
+        }
+    }
+
+    async function clearFilesSearch() {
+        ["#files-search-q", "#files-search-title", "#files-search-artist", "#files-search-album", "#files-search-year"].forEach((selector) => {
+            const el = $(selector);
+            if (el) el.value = "";
+        });
+        filesSearchState.active = false;
+        if (filesState.path || $("#files-path").value.trim()) {
+            await loadFiles();
+        }
+    }
+
     async function loadMoreFiles() {
-        if (filesState.loading || !filesState.hasMore) return;
+        if (filesSearchState.active || filesState.loading || !filesState.hasMore) return;
         filesState.loading = true;
-        const sentinel = $('#files-sentinel');
-        if (sentinel) sentinel.textContent = 'Loading more\u2026';
+        const sentinel = $("#files-sentinel");
+        if (sentinel) sentinel.textContent = "Loading more...";
         try {
             const resp = await fetch(`/api/files/audio?path=${encodeURIComponent(filesState.path)}&offset=${filesState.offset}&limit=50`);
             const data = await resp.json();
@@ -1091,7 +1218,7 @@
             loadedAudioFiles.push(...files.map((f) => f.path));
             filesState.offset += files.length;
             filesState.hasMore = data.has_more;
-            appendFilesList(files, startIndex);
+            appendFilesList(files, startIndex, loadMoreFiles, filesState.hasMore);
         } catch (e) {
             toast(e.message, "error");
         } finally {
@@ -1099,68 +1226,79 @@
         }
     }
 
-    function appendFilesList(files, startIndex) {
+    async function loadMoreFileSearch() {
+        if (!filesSearchState.active || filesSearchState.loading || !filesSearchState.hasMore) return;
+        filesSearchState.loading = true;
+        const sentinel = $("#files-sentinel");
+        if (sentinel) sentinel.textContent = "Loading more...";
+        try {
+            const resp = await fetch(buildFileSearchQuery(filesState.path, filesSearchState.criteria, filesSearchState.offset, 50));
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            const files = data.files || [];
+            const startIndex = loadedAudioFiles.length;
+            loadedAudioFiles.push(...files.map((f) => f.path));
+            filesSearchState.offset += files.length;
+            filesSearchState.hasMore = data.has_more;
+            appendFilesList(files, startIndex, loadMoreFileSearch, filesSearchState.hasMore);
+        } catch (e) {
+            toast(e.message, "error");
+        } finally {
+            filesSearchState.loading = false;
+        }
+    }
+
+    function appendFilesList(files, startIndex, moreCallback, hasMore) {
         const list = $("#files-list");
-        _unwatchSentinel('files-sentinel');
-        const sentinel = $('#files-sentinel');
+        _unwatchSentinel("files-sentinel");
+        const sentinel = $("#files-sentinel");
         if (sentinel) sentinel.remove();
-        list.insertAdjacentHTML('beforeend', files.map((f, i) => `
-            <div class="file-row">
-                <label class="checkbox-label" style="flex-shrink:0">
-                    <input type="checkbox" class="file-check" data-index="${startIndex + i}" checked>
-                </label>
-                <span class="file-icon">♪</span>
-                <span class="file-name" onclick="window.sfShowFileMeta('${esc(f.path)}')" style="cursor:pointer">${esc(f.name)}</span>
-                <span class="file-size">${fmtSize(f.size)}</span>
-            </div>
-        `).join(''));
-        
+        list.insertAdjacentHTML("beforeend", files.map((f, i) => renderFileRow(f, startIndex + i)).join(""));
+
         // Add event listeners to newly added checkboxes
         const newCheckboxes = list.querySelectorAll('.file-check:not([data-listeners="1"])');
         newCheckboxes.forEach((cb) => {
             cb.addEventListener("change", updateFileButtonStates);
             cb.setAttribute("data-listeners", "1");
         });
-        
-        if (filesState.hasMore) {
-            list.insertAdjacentHTML('beforeend', '<div id="files-sentinel" class="load-sentinel"></div>');
-            _watchSentinel('files-sentinel', loadMoreFiles);
+
+        if (hasMore) {
+            list.insertAdjacentHTML("beforeend", '<div id="files-sentinel" class="load-sentinel"></div>');
+            _watchSentinel("files-sentinel", moreCallback);
         }
-        
+
         updateFileButtonStates();
     }
 
     function renderFilesList(files) {
         const list = $("#files-list");
         if (!files.length) {
-            list.innerHTML = '<p class="text-muted">No audio files found.</p>';
+            list.innerHTML = '<p class="text-muted">No matching audio files found.</p>';
+            updateFileButtonStates();
             return;
         }
+
+        const hasMore = filesSearchState.active ? filesSearchState.hasMore : filesState.hasMore;
+        const moreCallback = filesSearchState.active ? loadMoreFileSearch : loadMoreFiles;
         list.innerHTML = `<div class="file-row file-select-all">
-                <label class="checkbox-label"><input type="checkbox" id="select-all-files" checked> <strong>Select All</strong></label>
+                <label class="checkbox-label"><input type="checkbox" id="select-all-files"> <strong>Select All</strong></label>
             </div>` +
-            files.map((f, i) => `
-            <div class="file-row">
-                <label class="checkbox-label" style="flex-shrink:0">
-                    <input type="checkbox" class="file-check" data-index="${i}" checked>
-                </label>
-                <span class="file-icon">♪</span>
-                <span class="file-name" onclick="window.sfShowFileMeta('${esc(f.path)}')" style="cursor:pointer">${esc(f.name)}</span>
-                <span class="file-size">${fmtSize(f.size)}</span>
-            </div>
-        `).join("") + (filesState.hasMore ? '<div id="files-sentinel" class="load-sentinel"></div>' : '');
+            files.map((f, i) => renderFileRow(f, i)).join("") +
+            (hasMore ? '<div id="files-sentinel" class="load-sentinel"></div>' : "");
 
         // Select-all toggle
         $("#select-all-files").addEventListener("change", (e) => {
             $$(".file-check").forEach((cb) => cb.checked = e.target.checked);
             updateFileButtonStates();
         });
-        
+
         // Enable rename/delete buttons when files are checked
         $$(".file-check").forEach((cb) => {
             cb.addEventListener("change", updateFileButtonStates);
+            cb.setAttribute("data-listeners", "1");
         });
-        
+
+        if (hasMore) _watchSentinel("files-sentinel", moreCallback);
         updateFileButtonStates();
     }
     
@@ -1328,7 +1466,7 @@
         list.insertAdjacentHTML('beforeend', files.map((f, i) => `
             <div class="file-row">
                 <label class="checkbox-label" style="flex-shrink:0">
-                    <input type="checkbox" class="analysis-check" data-index="${startIndex + i}" checked>
+                    <input type="checkbox" class="analysis-check" data-index="${startIndex + i}" >
                 </label>
                 <span class="file-icon">♪</span>
                 <span class="file-name">${esc(f.name)}</span>
@@ -1348,12 +1486,12 @@
             return;
         }
         list.innerHTML = `<div class="file-row file-select-all">
-                <label class="checkbox-label"><input type="checkbox" id="select-all-analysis" checked> <strong>Select All</strong></label>
+                <label class="checkbox-label"><input type="checkbox" id="select-all-analysis"> <strong>Select All</strong></label>
             </div>` +
             files.map((f, i) => `
             <div class="file-row">
                 <label class="checkbox-label" style="flex-shrink:0">
-                    <input type="checkbox" class="analysis-check" data-index="${i}" checked>
+                    <input type="checkbox" class="analysis-check" data-index="${i}">
                 </label>
                 <span class="file-icon">♪</span>
                 <span class="file-name">${esc(f.name)}</span>

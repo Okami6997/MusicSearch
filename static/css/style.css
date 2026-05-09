@@ -396,6 +396,13 @@ input, select { font: inherit; color: inherit; }
 
 /* ── Toolbar ─────────────────────────────────────────────────── */
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.files-search-toolbar {
+    flex-wrap: wrap;
+    align-items: stretch;
+}
+.files-search-toolbar .path-input {
+    min-width: 140px;
+}
 .path-input {
     flex: 1; padding: 8px 12px; background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius);
@@ -492,6 +499,24 @@ input, select { font: inherit; color: inherit; }
 .file-select-all { border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 2px; }
 .file-icon { font-size: 16px; width: 24px; text-align: center; }
 .file-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-name-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.file-meta-line {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.file-match-fields {
+    color: var(--primary);
+    font-weight: 500;
+}
 .file-size { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .file-detail {
     margin-top: 12px; padding: 16px; background: var(--bg-card);
