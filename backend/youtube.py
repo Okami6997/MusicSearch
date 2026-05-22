@@ -2,6 +2,8 @@
 
 import os
 import re
+import shutil
+import sys
 from urllib.parse import quote
 
 import requests
@@ -13,6 +15,18 @@ class YouTubeDownloader:
     Output is MP3 320kbps (YouTube does not offer lossless).
     Use as a last-resort fallback after Tidal/Qobuz/Amazon.
     """
+
+    @staticmethod
+    def _ytdlp_base_cmd() -> list[str]:
+        """Return a runnable yt-dlp command, even when binary is not on PATH."""
+        bin_path = shutil.which("yt-dlp")
+        if bin_path:
+            return [bin_path]
+        try:
+            import yt_dlp  # noqa: F401
+            return [sys.executable, "-m", "yt_dlp"]
+        except Exception as e:
+            raise ValueError("yt-dlp not found in PATH and Python module unavailable") from e
 
     UA = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -406,15 +420,14 @@ class YouTubeDownloader:
     def _download_with_ytdlp(self, video_id: str, output_path: str,
                               progress_cb=None) -> str:
         """Download audio via yt-dlp (primary engine). Returns output_path."""
-        import subprocess, shutil
+        import subprocess
 
-        if not shutil.which("yt-dlp"):
-            raise ValueError("yt-dlp not found in PATH")
+        ytdlp_cmd = self._ytdlp_base_cmd()
 
         url = f"https://music.youtube.com/watch?v={video_id}"
         tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
         cmd = [
-            "yt-dlp",
+            *ytdlp_cmd,
             "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -423,15 +436,12 @@ class YouTubeDownloader:
             "--no-progress",
             "--quiet",
         ]
-        # Pass node runtime if available so yt-dlp can solve JS challenges
         node_path = shutil.which("node")
         if node_path:
             cmd += ["--js-runtimes", f"node:{node_path}"]
         cmd.append(url)
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=300
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 raise ValueError(f"yt-dlp exited {result.returncode}: {result.stderr.strip()}")
             if os.path.exists(output_path):
@@ -450,15 +460,14 @@ class YouTubeDownloader:
     def _download_with_ytdlp_search(self, track_name: str, artist_name: str,
                                      output_path: str, progress_cb=None) -> str:
         """Use yt-dlp ytsearch to find and download a track by text. Returns output_path."""
-        import subprocess, shutil
+        import subprocess
 
-        if not shutil.which("yt-dlp"):
-            raise ValueError("yt-dlp not found in PATH")
+        ytdlp_cmd = self._ytdlp_base_cmd()
 
         query = f"{track_name} {artist_name} audio"
         tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
         cmd = [
-            "yt-dlp",
+            *ytdlp_cmd,
             "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -473,9 +482,7 @@ class YouTubeDownloader:
             cmd.insert(-1, "--js-runtimes")
             cmd.insert(-1, f"node:{node_path}")
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=300
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 raise ValueError(f"yt-dlp search exited {result.returncode}: {result.stderr.strip()}")
             if os.path.exists(output_path):
@@ -592,6 +599,56 @@ class YouTubeDownloader:
             errors.append(f"proxy: {e}")
 
         raise ValueError("YouTube download failed: " + "; ".join(errors))
+
+    def download_external_url(self, media_url: str, output_dir: str,
+                              filename: str = "", progress_cb=None) -> str:
+        """Download audio from an arbitrary URL (e.g., SoundCloud) via yt-dlp."""
+        import subprocess
+
+        ytdlp_cmd = self._ytdlp_base_cmd()
+
+        if not filename:
+            filename = "external.mp3"
+        if not filename.endswith(".mp3"):
+            filename = os.path.splitext(filename)[0] + ".mp3"
+
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, filename)
+        tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
+
+        cmd = [
+            *ytdlp_cmd,
+            "--no-playlist",
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "--output", tmp_template,
+            "--no-progress",
+            "--quiet",
+            media_url,
+        ]
+
+        node_path = shutil.which("node")
+        if node_path:
+            cmd.insert(-1, "--js-runtimes")
+            cmd.insert(-1, f"node:{node_path}")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode != 0:
+                raise ValueError(f"yt-dlp exited {result.returncode}: {result.stderr.strip()}")
+            if os.path.exists(output_path):
+                return output_path
+            base = os.path.splitext(output_path)[0]
+            for ext in (".mp3", ".m4a", ".opus", ".webm"):
+                candidate = base + ext
+                if os.path.exists(candidate):
+                    if candidate != output_path:
+                        os.rename(candidate, output_path)
+                    return output_path
+            raise ValueError("yt-dlp finished but output file not found")
+        except subprocess.TimeoutExpired:
+            raise ValueError("yt-dlp timed out")
 
     def search_and_download(self, track_name: str, artist_name: str,
                             output_dir: str, filename: str = "",

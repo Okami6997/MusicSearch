@@ -39,6 +39,11 @@ class DownloadStatus(str, Enum):
     EMBEDDING = "embedding"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class _CancelledError(Exception):
+    """Raised internally when a task is cancelled."""
 
 
 @dataclass
@@ -113,6 +118,7 @@ class DownloadManager:
         # Batch ordering: buffer completed tasks until they can be flushed in seq order
         self._batch_next_seq: dict[str, int] = {}
         self._batch_buffer: dict[str, dict[int, tuple]] = {}  # bid -> {seq: (task, filepath)}
+        self._cancelled_ids: set[str] = set()
 
     def add_track(self, url: str = "", isrc: str = "", title: str = "",
                   artist: str = "", album: str = "", cover_url: str = "",
@@ -156,11 +162,40 @@ class DownloadManager:
             })
         return health
 
+    def cancel_task(self, task_id: str):
+        """Cancel a queued or in-progress download."""
+        with self._lock:
+            task = self.tasks.get(task_id)
+            if task and task.status not in (
+                DownloadStatus.COMPLETED, DownloadStatus.FAILED, DownloadStatus.CANCELLED
+            ):
+                self._cancelled_ids.add(task_id)
+                if task.status == DownloadStatus.QUEUED:
+                    task.status = DownloadStatus.CANCELLED
+                    self._notify(task)
+
+    def cancel_all(self):
+        """Cancel all queued and in-progress downloads."""
+        with self._lock:
+            for task in self.tasks.values():
+                if task.status not in (
+                    DownloadStatus.COMPLETED, DownloadStatus.FAILED, DownloadStatus.CANCELLED
+                ):
+                    self._cancelled_ids.add(task.id)
+                    if task.status == DownloadStatus.QUEUED:
+                        task.status = DownloadStatus.CANCELLED
+                        self._notify(task)
+
     def clear_completed(self):
         with self._lock:
             self.tasks = OrderedDict(
                 (k, v) for k, v in self.tasks.items()
-                if v.status not in (DownloadStatus.COMPLETED, DownloadStatus.FAILED)
+                if v.status not in (
+                    DownloadStatus.COMPLETED, DownloadStatus.FAILED, DownloadStatus.CANCELLED
+                )
+            )
+            self._cancelled_ids.difference_update(
+                set(self.tasks.keys())
             )
 
     def _ensure_running(self):
@@ -186,9 +221,12 @@ class DownloadManager:
                         pass  # Exceptions already handled in _process
 
     def _get_queued_tasks(self, limit: int) -> list[DownloadTask]:
-        """Get up to `limit` queued tasks."""
+        """Get up to `limit` queued tasks that are not cancelled."""
         with self._lock:
-            queued = [t for t in self.tasks.values() if t.status == DownloadStatus.QUEUED]
+            queued = [
+                t for t in self.tasks.values()
+                if t.status == DownloadStatus.QUEUED and t.id not in self._cancelled_ids
+            ]
             return queued[:limit]
 
     def _next_task(self) -> Optional[DownloadTask]:
@@ -198,8 +236,13 @@ class DownloadManager:
                     return t
         return None
 
+    def _check_cancelled(self, task: DownloadTask):
+        if task.id in self._cancelled_ids:
+            raise _CancelledError()
+
     def _process(self, task: DownloadTask):
         try:
+            self._check_cancelled(task)
             task.status = DownloadStatus.RESOLVING
             self._notify(task)
 
@@ -406,10 +449,12 @@ class DownloadManager:
                 links.setdefault("artist", task.artist)
 
             task.isrc = isrc
+            self._check_cancelled(task)
             task.status = DownloadStatus.DOWNLOADING
             self._notify(task)
 
             def progress_cb(done, total):
+                self._check_cancelled(task)
                 if total:
                     task.progress = done / total * 100
                 else:
@@ -421,6 +466,8 @@ class DownloadManager:
             print(f"[Download] Starting download for '{task.title}' — links: {links}")
             filepath = self._download(task, links, isrc, progress_cb)
             task.error = ""
+
+            self._check_cancelled(task)
 
             # Auto-resample to 192kHz/24-bit if enabled
             if self.auto_resample:
@@ -456,6 +503,12 @@ class DownloadManager:
                 task.status = DownloadStatus.COMPLETED
                 self._notify(task)
 
+        except _CancelledError:
+            task.status = DownloadStatus.CANCELLED
+            task.error = "Cancelled"
+            with self._lock:
+                self._cancelled_ids.discard(task.id)
+            self._notify(task)
         except Exception as e:
             task.error = str(e)
             traceback.print_exc()
@@ -601,7 +654,10 @@ class DownloadManager:
             raise ValueError("No YouTube URL and no title/artist for search")
 
         def soundcloud_fn(d, f, cb):
-            # Use mapped YouTube URL first (from SongLink), then text search.
+            # First try the original SoundCloud URL via yt-dlp, then mapped YouTube,
+            # then title/artist text search.
+            if soundcloud_url:
+                return self.youtube.download_external_url(soundcloud_url, d, f, cb)
             if youtube_url:
                 return self.youtube.download_track(youtube_url, d, f, cb)
             if task.title and task.artist:

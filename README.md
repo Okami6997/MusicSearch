@@ -11,8 +11,8 @@ A web-based music search and download application. Search or paste any music pla
 - **Search Source Toggles** — Show/hide result sections (Tracks, Artists, Albums) and individual services (Qobuz, Apple Music, YouTube, Deezer, SoundCloud, Tidal, Spotify, Amazon) using the filter modal in the Search UI
 - **Section Modals** — Clicking a section heading (Tracks, Artists, Albums) opens a full-screen modal with infinite scroll for browsing large result sets without clipping or layout constraints
 - **Album/Artist Detail Modal** — "View" button on album and artist rows opens a stacking detail modal with cover art, metadata, and track listing; artist expand includes per-album "View" buttons for drilling into track lists
-- **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud) to find cross-platform links via SongLink
-- **Album & Playlist Expansion** — Paste an album or playlist URL from Spotify, YouTube Music, or Amazon Music and expand it into individual tracks with a single-click "Download All" batch action
+- **URL Resolve** — Paste any music URL (Tidal, Amazon, Deezer, Qobuz, Apple Music, YouTube Music, Soundcloud), including `on.soundcloud.com` short links, to find cross-platform links via SongLink
+- **Album & Playlist Expansion** — Paste an album or playlist URL from Spotify, YouTube Music, Amazon Music, Apple Music, or SoundCloud and expand it into individual tracks with a single-click "Download All" batch action
 - **Multi-Source Download** — Downloads from Tidal, Spotify, Deezer, Qobuz, Amazon Music, YouTube Music, and SoundCloud with automatic failover
 - **Provider health and cooldown** — The queue detects failing services, backs them off temporarily, and shows retry timing and last-error info directly in the queue panel.
 - **Qobuz/Deezer Resolver Fallbacks** — Download resolvers use multiple provider endpoints with quality fallback for more resilient FLAC retrieval when a single upstream API is unavailable
@@ -26,7 +26,7 @@ A web-based music search and download application. Search or paste any music pla
 - **Audio Resampling** — Change sample rate and bit depth of audio files (FFmpeg), with batch processing
 - **File Manager** — Browse audio files, view metadata, and batch rename using format templates
 - **Operation History** — SQLite-based history tracking downloads, resampling, renaming, and analysis operations
-- **Download Validation** — Duration-based validation to detect preview/sample files
+- **Download Validation** — Duration-based validation to detect preview/sample files, including SoundCloud tracks that expose separate preview and full-length durations
 - **Persistent settings** — Download preferences now persist across restarts using a local settings file.
 - **Real-time Progress** — WebSocket-based download queue with live progress updates
 - **Dark UI** — Clean, responsive dark-themed web interface with tabbed navigation

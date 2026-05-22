@@ -42,6 +42,7 @@
 - [x] Detail modal z-index fix — Detail modal properly stacks above section modal when opened from within it.
 - [x] View Album: Amazon source support — Album view from search detail modal now works for Amazon Music alongside Qobuz and Apple Music sources.
 - [x] URL Paste: Amazon query-style album URLs — Amazon album links with `trackAsin` query parameter are now correctly parsed and recognized.
+- [x] SoundCloud URL Paste + download correctness — `on.soundcloud.com` short links now expand to canonical URLs, SoundCloud `/sets/` URLs resolve as playlists, stub playlist tracks are hydrated with full metadata, and track duration uses `full_duration` so downloads are not misvalidated as 30s previews.
 - [ ] Integrate with Spotify API for metadata retrieval
 - [ ] Create a user-friendly interface for selecting download options
 - [ ] Implement error handling for failed downloads

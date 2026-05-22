@@ -341,9 +341,15 @@ def resolve_playlist():
         elif platform == "youtube":
             from backend.youtube import YouTubeDownloader
             tracks = YouTubeDownloader().expand_playlist(url)
+        elif platform in ("apple_music", "itunes", "apple"):
+            from backend.applemusic import AppleMusicDownloader
+            tracks = AppleMusicDownloader().expand_playlist(url)
         elif platform == "amazon":
             # Amazon playlists are not publicly expandable without auth
             return jsonify({"error": "Amazon playlist expansion is not supported yet"}), 400
+        elif platform == "soundcloud":
+            from backend.soundcloud import SoundCloudClient
+            tracks = SoundCloudClient().resolve_set(url)
 
         if not tracks:
             return jsonify({"error": f"Could not expand playlist for {platform}"}), 404
@@ -1538,6 +1544,18 @@ def providers_health():
 @app.route("/api/queue/clear", methods=["POST"])
 def clear_queue():
     download_manager.clear_completed()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/queue/cancel/<task_id>", methods=["POST"])
+def cancel_task(task_id: str):
+    download_manager.cancel_task(task_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/queue/cancel-all", methods=["POST"])
+def cancel_all_tasks():
+    download_manager.cancel_all()
     return jsonify({"ok": True})
 
 

@@ -38,8 +38,21 @@ def is_music_url(url: str) -> bool:
     return any(p.search(url) for p in MUSIC_URL_PATTERNS)
 
 
+def _expand_soundcloud_short_url(url: str) -> str:
+    """Expand on.soundcloud.com short links to their canonical URL."""
+    if "on.soundcloud.com/" not in url:
+        return url
+    try:
+        resp = requests.head(url, allow_redirects=True, timeout=20, headers={"User-Agent": UA})
+        final_url = (resp.url or "").strip()
+        return final_url or url
+    except Exception:
+        return url
+
+
 def parse_music_url(url: str) -> dict:
     """Parse a music URL and return platform info."""
+    url = _expand_soundcloud_short_url(url)
     if "tidal.com" in url:
         m = re.search(r"tidal\.com.*?/(track|album|playlist)/(\d+)", url)
         if m:
@@ -89,7 +102,7 @@ def parse_music_url(url: str) -> dict:
         if m:
             return {"platform": "spotify", "type": m.group(1), "id": m.group(2)}
     if "music.apple.com" in url or "itunes.apple.com" in url:
-        m = re.search(r"/(album|playlist|song)/[^/]+/(\d+|[a-zA-Z0-9]+)", url)
+        m = re.search(r"/(album|playlist|song)/[^/]+/([a-zA-Z0-9._-]+)", url)
         if m:
             return {"platform": "apple_music", "type": m.group(1), "id": m.group(2)}
         m = re.search(r"/id(\d+)", url)
@@ -97,7 +110,11 @@ def parse_music_url(url: str) -> dict:
             return {"platform": "apple_music", "type": "song", "id": m.group(1)}
         return {"platform": "apple_music", "type": "unknown", "id": ""}
     if "soundcloud.com" in url:
-        # SoundCloud permalink URLs generally map to tracks.
+        # SoundCloud set/playlist URLs contain /sets/
+        if "/sets/" in url:
+            m = re.search(r"soundcloud\.com/([^/?]+)/sets/([^/?]+)", url)
+            set_id = f"{m.group(1)}/sets/{m.group(2)}" if m else ""
+            return {"platform": "soundcloud", "type": "playlist", "id": set_id}
         return {"platform": "soundcloud", "type": "track", "id": ""}
     # Generic — let song.link try to resolve it
     return {"platform": "unknown", "type": "unknown", "id": ""}
@@ -172,9 +189,10 @@ class SongLinkClient:
             "tidal": "tidal_url", "amazon": "amazon_url",
             "deezer": "deezer_url", "spotify": "spotify_url",
             "youtube": "youtube_url", "soundcloud": "soundcloud_url",
+            "apple_music": "apple_url",
         }
         pk = _platform_key_map.get(parsed.get("platform", ""))
-        if pk and parsed.get("type") in ("track", "album") and not links.get(pk):
+        if pk and parsed.get("type") in ("track", "album", "song") and not links.get(pk):
             links[pk] = _check_url
 
         misresolved = self._is_misresolved_as_album(_check_url, links)
@@ -188,9 +206,12 @@ class SongLinkClient:
                 "tidal": False, "amazon": bool(amazon),
                 "qobuz": False, "deezer": False,
                 "youtube": bool(youtube), "spotify": bool(spotify),
+                "apple": False, "soundcloud": False,
                 "tidal_url": "", "amazon_url": amazon,
                 "deezer_url": "", "youtube_url": youtube,
-                "spotify_url": spotify, "isrc": "",
+                "spotify_url": spotify,
+                "apple_url": "", "soundcloud_url": "",
+                "isrc": "",
                 "title": "", "artist": "", "album": "",
                 "entitiesByUniqueId": entities_by_id,
             }
@@ -200,6 +221,8 @@ class SongLinkClient:
         deezer = links.get("deezer_url", "")
         youtube = links.get("youtube_url", "")
         spotify = links.get("spotify_url", "")
+        apple = links.get("apple_url", "")
+        soundcloud = links.get("soundcloud_url", "")
         isrc = links.get("isrc", "")
         qobuz = self._check_qobuz(isrc) if isrc else False
         song_title = ""
@@ -222,9 +245,12 @@ class SongLinkClient:
             "tidal": bool(tidal), "amazon": bool(amazon),
             "qobuz": qobuz, "deezer": bool(deezer),
             "youtube": bool(youtube), "spotify": bool(spotify),
+            "apple": bool(apple), "soundcloud": bool(soundcloud),
             "tidal_url": tidal, "amazon_url": amazon,
             "deezer_url": deezer, "youtube_url": youtube,
-            "spotify_url": spotify, "isrc": isrc,
+            "spotify_url": spotify,
+            "apple_url": apple, "soundcloud_url": soundcloud,
+            "isrc": isrc,
             "title": song_title, "artist": song_artist, "album": song_album,
             "entitiesByUniqueId": entities_by_id,
         }

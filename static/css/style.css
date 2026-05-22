@@ -338,7 +338,22 @@ input, select { font: inherit; color: inherit; }
 .queue-progress-bar { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s; }
 .status-completed .queue-status { color: var(--primary); }
 .status-failed .queue-status { color: var(--danger); }
+.status-cancelled .queue-status { color: var(--text-dim); }
 .status-downloading .queue-progress-bar { background: var(--info); }
+.btn-stop-task {
+    flex-shrink: 0; width: 24px; height: 24px; border-radius: 4px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--danger); font-size: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background var(--transition), border-color var(--transition);
+}
+.btn-stop-task:hover { background: color-mix(in srgb, var(--danger) 15%, transparent); border-color: var(--danger); }
+.btn-danger {
+    padding: 8px 16px; border: 1px solid var(--danger); border-radius: var(--radius);
+    font-size: 14px; color: var(--danger); background: transparent;
+    transition: all var(--transition); cursor: pointer;
+}
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 15%, transparent); }
 
 /* ── Settings ────────────────────────────────────────────────── */
 .settings-group { margin-bottom: 16px; }
@@ -362,6 +377,7 @@ input, select { font: inherit; color: inherit; }
 }
 .toast.success { border-color: var(--primary); }
 .toast.error { border-color: var(--danger); }
+.toast.info { border-color: var(--text-muted); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ── Utility ─────────────────────────────────────────────────── */

@@ -252,8 +252,12 @@ class AmazonDownloader:
         host = parsed.netloc or "music.amazon.com"
         base_url = f"https://{host}"
 
-        # 1. Resolve via SongLink → find Deezer album
+        # 1. Resolve via SongLink → try Deezer album first, then Spotify fallback.
         deezer_album_id = None
+        spotify_album_url = ""
+        tidal_album_url = ""
+        album_title = ""
+        album_artist = ""
         try:
             sl = self.session.get(
                 "https://api.song.link/v1-alpha.1/links",
@@ -261,13 +265,141 @@ class AmazonDownloader:
                 timeout=20,
             )
             if sl.status_code == 200:
-                lbp = sl.json().get("linksByPlatform", {})
+                sl_json = sl.json()
+                lbp = sl_json.get("linksByPlatform", {})
                 deezer_url = lbp.get("deezer", {}).get("url", "")
+                spotify_album_url = lbp.get("spotify", {}).get("url", "")
+                tidal_album_url = lbp.get("tidal", {}).get("url", "")
                 m = re.search(r"/album/(\d+)", deezer_url)
                 if m:
                     deezer_album_id = m.group(1)
+
+                # Fallback metadata from SongLink entity payload
+                entities = sl_json.get("entitiesByUniqueId", {})
+                for entity in entities.values():
+                    if entity.get("type") == "album" and entity.get("title"):
+                        album_title = entity.get("title", "")
+                        album_artist = entity.get("artistName", "")
+                        break
         except Exception:
             pass
+
+        if not deezer_album_id and spotify_album_url:
+            try:
+                from .spotify import SpotifyDownloader
+
+                spotify_tracks = SpotifyDownloader().expand_album(spotify_album_url)
+                if spotify_tracks:
+                    return [{
+                        "title": t.get("title", ""),
+                        "artist": t.get("artist", ""),
+                        "album": t.get("album", ""),
+                        "cover_url": t.get("cover_url", ""),
+                        "duration_ms": int(t.get("duration_ms", 0) or 0),
+                        "track_number": int(t.get("track_number", 0) or 0),
+                        "total_tracks": int(t.get("total_tracks", 0) or len(spotify_tracks)),
+                        "disc_number": int(t.get("disc_number", 0) or 1),
+                        "year": str(t.get("year", ""))[:4],
+                        "isrc": t.get("isrc", ""),
+                        "url": t.get("url", ""),
+                        "source": "amazon",
+                    } for t in spotify_tracks]
+            except Exception:
+                pass
+
+        if not deezer_album_id and tidal_album_url and album_title:
+            try:
+                from .tidal import TidalSearchClient
+
+                tsc = TidalSearchClient()
+                query = f"{album_title} {album_artist}".strip()
+                tidal_tracks = tsc.search_tracks(query, limit=200)
+                wanted_album = album_title.lower().strip()
+                wanted_artist = album_artist.lower().strip()
+                filtered = []
+                for t in tidal_tracks:
+                    t_album = str(t.get("album", "")).lower().strip()
+                    t_artist = str(t.get("artist", "")).lower().strip()
+                    if wanted_album and wanted_album not in t_album:
+                        continue
+                    if wanted_artist and wanted_artist not in t_artist:
+                        continue
+                    filtered.append(t)
+
+                if filtered:
+                    total = len(filtered)
+                    out = []
+                    for idx, t in enumerate(filtered):
+                        out.append({
+                            "title": t.get("title", ""),
+                            "artist": t.get("artist", ""),
+                            "album": t.get("album", album_title),
+                            "cover_url": t.get("cover_url", ""),
+                            "duration_ms": int(t.get("duration_ms", 0) or 0),
+                            "track_number": idx + 1,
+                            "total_tracks": total,
+                            "disc_number": 1,
+                            "year": str(t.get("year", ""))[:4],
+                            "isrc": t.get("isrc", ""),
+                            "url": t.get("url", ""),
+                            "source": "amazon",
+                        })
+                    return out
+            except Exception:
+                pass
+
+        if not deezer_album_id and album_title:
+            try:
+                # Last fallback: use Amazon's own public search endpoint and filter
+                # by album/artist to build a best-effort track list.
+                from .search import AmazonSearchClient
+
+                search_rows = AmazonSearchClient().search_tracks(
+                    f"{album_title} {album_artist}".strip(),
+                    limit=80,
+                )
+                wanted_artist = (album_artist or "").lower().strip()
+                wanted_album = (album_title or "").lower().strip()
+
+                filtered = []
+                seen = set()
+                for t in search_rows:
+                    title = str(t.get("title", "") or "").strip()
+                    artist = str(t.get("artist", "") or "").strip()
+                    key = (title.lower(), artist.lower())
+                    if not title or key in seen:
+                        continue
+                    if wanted_artist and wanted_artist not in artist.lower():
+                        continue
+                    # Album text from Amazon search can be sparse; allow title-only match too.
+                    if wanted_album and (wanted_album not in title.lower()) and (wanted_album not in str(t.get("album", "")).lower()):
+                        if len(filtered) >= 1:
+                            # Keep additional tracks from same artist even if title doesn't contain album token.
+                            pass
+                    seen.add(key)
+                    filtered.append(t)
+
+                if filtered:
+                    total = len(filtered)
+                    out = []
+                    for idx, t in enumerate(filtered):
+                        out.append({
+                            "title": t.get("title", ""),
+                            "artist": t.get("artist", "") or album_artist,
+                            "album": album_title,
+                            "cover_url": t.get("cover_url", ""),
+                            "duration_ms": int(t.get("duration_ms", 0) or 0),
+                            "track_number": idx + 1,
+                            "total_tracks": total,
+                            "disc_number": 1,
+                            "year": "",
+                            "isrc": t.get("isrc", ""),
+                            "url": t.get("url", ""),
+                            "source": "amazon",
+                        })
+                    return out
+            except Exception:
+                pass
 
         if not deezer_album_id:
             return []

@@ -684,6 +684,8 @@
     }
 
     // ── URL Resolve ─────────────────────────────────────────
+    let _resolvedTrackDownloadContext = null;
+
     $("#btn-resolve").addEventListener("click", doResolve);
     urlInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") doResolve();
@@ -841,6 +843,8 @@
         hideAll();
         const card = $("#resolve-results");
         card.classList.remove("hidden");
+        window._selectedPlatform = "";
+        window._selectedUrl = "";
 
         const platforms = [
             { key: "tidal", name: "Tidal", url: data.tidal_url },
@@ -849,6 +853,7 @@
             { key: "qobuz", name: "Qobuz", available: data.qobuz },
             { key: "deezer", name: "Deezer", url: data.deezer_url },
             { key: "youtube", name: "YouTube Music", url: data.youtube_url },
+            { key: "soundcloud", name: "SoundCloud", url: data.soundcloud_url },
             { key: "apple", name: "Apple Music", url: data.apple_url },
         ];
 
@@ -898,13 +903,28 @@
             const src = parsed.platform || "qobuz";
             actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownloadAlbum('${escJs(albumId)}','${escJs(src)}','${escJs(album)}','${escJs(artist)}','')">Download Album</button>`;
         } else {
-            // Single track download button - use selected platform URL or fallbacks
-            const dlUrl = window._selectedUrl || data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || "";
-            const downloadFn = `window.sfDownload('${escJs(dlUrl)}','${escJs(isrc)}','${escJs(title)}','${escJs(artist)}','${escJs(album)}','',0)`;
-            actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="${downloadFn}">Download Track</button>`;
+            // Single track download button - use selected platform URL or fallbacks at click time
+            _resolvedTrackDownloadContext = {
+                isrc,
+                title,
+                artist,
+                album,
+                fallbackUrl: data.tidal_url || data.spotify_url || data.amazon_url || data.youtube_url || data.soundcloud_url || data.apple_url || "",
+            };
+            actionsHtml += `<button class="btn-primary" style="margin-top:12px" onclick="window.sfDownloadResolvedTrack()">Download Track</button>`;
         }
         $("#resolve-actions").innerHTML = actionsHtml;
     }
+
+    window.sfDownloadResolvedTrack = function () {
+        const ctx = _resolvedTrackDownloadContext || {};
+        const dlUrl = (window._selectedUrl || ctx.fallbackUrl || "").trim();
+        if (!dlUrl && !ctx.isrc) {
+            toast("No downloadable source URL found for this track", "error");
+            return;
+        }
+        window.sfDownload(dlUrl, ctx.isrc || "", ctx.title || "", ctx.artist || "", ctx.album || "", "", 0);
+    };
 
     // ── Download ────────────────────────────────────────────
     window.sfDownload = async function (url, isrc, title, artist, album, cover, durationMs, trackNumber, totalTracks, discNumber, year) {
@@ -1813,6 +1833,16 @@
         await refreshQueue();
     });
 
+    $("#btn-stop-all-queue").addEventListener("click", async () => {
+        await fetch("/api/queue/cancel-all", { method: "POST" });
+        await refreshQueue();
+    });
+
+    window._sfCancelTask = async function(taskId) {
+        await fetch(`/api/queue/cancel/${encodeURIComponent(taskId)}`, { method: "POST" });
+        await refreshQueue();
+    };
+
     async function refreshQueue() {
         try {
             const resp = await fetch("/api/queue");
@@ -1868,6 +1898,7 @@
             list.innerHTML = '<p class="empty-queue">No downloads yet</p>';
             return;
         }
+        const stoppable = ["queued", "resolving", "downloading", "converting", "resampling", "embedding"];
         list.innerHTML = queueData.map((t) => `
             <div class="queue-item status-${t.status}">
                 <img class="queue-cover" src="${esc(t.cover_url || '')}" alt=""
@@ -1878,6 +1909,7 @@
                     ${t.status === "downloading" ? `<div class="queue-progress"><div class="queue-progress-bar" style="width:${t.progress}%"></div></div>` : ""}
                     ${t.status === "completed" && t.output_path ? `<div class="queue-path">${esc(t.output_path)}</div>` : ""}
                 </div>
+                ${stoppable.includes(t.status) ? `<button class="btn-stop-task" title="Stop download" onclick="window._sfCancelTask('${esc(t.id)}')">&#x25A0;</button>` : ""}
             </div>
         `).join("");
     }
@@ -1892,13 +1924,14 @@
             case "embedding": return "Embedding metadata & lyrics...";
             case "completed": return `✓ Completed${t.source ? ' via ' + t.source : ''}`;
             case "failed": return `✕ Failed: ${t.error}`;
+            case "cancelled": return "✕ Cancelled";
             default: return t.status;
         }
     }
 
     function updateQueueBadge() {
         fetch("/api/queue").then(r => r.json()).then(q => {
-            const active = q.filter(t => !["completed", "failed"].includes(t.status)).length;
+            const active = q.filter(t => !["completed", "failed", "cancelled"].includes(t.status)).length;
             queueBadge.textContent = active;
             queueBadge.classList.toggle("hidden", active === 0);
         }).catch(() => {});
@@ -1918,6 +1951,7 @@
             if ($("#page-history").classList.contains("active")) loadHistory();
         }
         if (data.status === "failed") toast(`"${data.title || data.url}" failed: ${data.error}`, "error");
+        if (data.status === "cancelled") toast(`"${data.title || data.url}" cancelled`, "info");
     });
 
     // ── Search Filters Modal ───────────────────────────────

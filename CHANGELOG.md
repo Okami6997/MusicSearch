@@ -4,10 +4,18 @@
 
 ### Bug Fixes
 
+- **SoundCloud URL Paste: short links and sets** — `on.soundcloud.com` short links are now expanded to their canonical SoundCloud URL before parsing and resolving. SoundCloud `/sets/` links are detected as playlists and expanded into track lists instead of being misclassified as single tracks.
+- **SoundCloud playlist tracks: full metadata hydration** — Playlist expansion now hydrates stub track objects returned by the SoundCloud API so every entry includes title, permalink URL, artist, and other required metadata. This fixes "Unknown" track titles and download requests failing with `url, isrc, or title+artist required`.
+- **SoundCloud duration handling** — SoundCloud track metadata now uses `full_duration` instead of the 30-second preview `duration` field. This prevents playlist tracks from being treated as 30s previews during validation and fixes incorrect short downloads.
+
 - **URL Paste: Amazon query-style album URLs** — Amazon album links using query parameters (e.g., `?trackAsin=B0FFGW1Y1N`) are now correctly parsed as track links instead of being misclassified as album links. URL parser now extracts `trackAsin` query parameter and detects track ASINs robustly. Applies to URLs like `https://music.amazon.in/albums/B0FFGV7MKD?trackAsin=B0FFGW1Y1N`.
 - **View Album: Amazon source now supported** — Album view from search results (detail modal) now works for Amazon Music albums, not just Qobuz/Apple Music. Added album expansion handlers for Amazon, YouTube, Spotify, and Deezer in the `/api/search/expand` endpoint. Error message now lists all supported sources instead of hardcoding "qobuz or itunes".
 
 ### Files Changed
+
+- `backend/songlink.py` — Added SoundCloud short-link canonicalization (`on.soundcloud.com` -> `soundcloud.com/...`) before URL parsing so short links resolve as tracks or playlists correctly
+- `backend/soundcloud.py` — Added short-link expansion for playlist resolution; hydrated stub track objects in set responses via batched `/tracks` lookups; switched SoundCloud duration mapping from preview `duration` to `full_duration`
+- `app.py` — Added SoundCloud playlist expansion support to `/api/resolve/playlist`
 
 - `app.py` — Relaxed source validation in `search_expand()` endpoint; now allows `amazon`, `youtube`, `spotify`, `deezer` for album expansion alongside `qobuz` and `itunes`; added album expansion handlers for all four sources with proper metadata extraction; added source alias normalization (`apple_music` → `itunes`, `youtube_music` → `youtube`)
 - `backend/songlink.py` — Added `parse_qs`, `urlparse` imports; enhanced `parse_music_url()` to detect Amazon track ASINs from `trackAsin` query parameter as well as URL path; added `_amazon_track_asin_from_url()` helper to extract ASIN from both URL path and query params; updated `_norm_amazon()` to use the new helper for robust track URL normalization; updated misresolved-track detection to recognize query-style Amazon URLs

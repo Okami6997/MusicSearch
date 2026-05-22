@@ -100,7 +100,7 @@ class AppleMusicDownloader:
         if m:
             return {"type": "album", "id": m.group(1)}
         # Playlist: /playlist/{name}/{id}
-        m = re.search(r"/playlist/[^/]+/([a-zA-Z0-9]+)", url)
+        m = re.search(r"/playlist/[^/]+/([a-zA-Z0-9._-]+)", url)
         if m:
             return {"type": "playlist", "id": m.group(1)}
         # Song: /song/{name}/{id}
@@ -154,13 +154,56 @@ class AppleMusicDownloader:
         # First check if it's a numeric ID we can look up
         if playlist_url_or_id.isdigit():
             return self._scrape_playlist_by_id(playlist_url_or_id)
+
+        # If a full Apple Music playlist URL was provided, scrape that exact page.
+        playlist_input = str(playlist_url_or_id).strip()
+        if "music.apple.com" in playlist_input and "/playlist/" in playlist_input:
+            tracks = self._scrape_playlist_by_url(playlist_input)
+            if tracks:
+                return tracks
         
         # Extract playlist ID from URL
         import re
-        m = re.search(r"/playlist/[^/]+/([a-zA-Z0-9]+)", str(playlist_url_or_id))
+        m = re.search(r"/playlist/[^/]+/([a-zA-Z0-9._-]+)", str(playlist_url_or_id))
         playlist_id = m.group(1) if m else playlist_url_or_id
         
         return self._scrape_playlist_by_id(playlist_id)
+
+    def _scrape_playlist_by_url(self, playlist_url: str) -> list[dict]:
+        """Scrape playlist tracks from the full Apple Music playlist URL."""
+        try:
+            resp = self.session.get(
+                playlist_url,
+                headers={"User-Agent": self.UA},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return []
+
+            import re, json
+            html = resp.text
+
+            matches = re.findall(r'<script[^>]+type="application/json"[^>]*>(.*?)</script>', html, re.DOTALL)
+            for match in matches:
+                try:
+                    data = json.loads(match)
+                    tracks = self._extract_tracks_from_json(data)
+                    if tracks:
+                        return tracks
+                except Exception:
+                    continue
+
+            m = re.search(r'"tracks"\s*:\s*\[(.*?)\]', html, re.DOTALL)
+            if m:
+                try:
+                    tracks_json = json.loads("[" + m.group(1) + "]")
+                    return [self._normalize_single(t) for t in tracks_json if t.get("id")]
+                except Exception:
+                    pass
+
+            return []
+        except Exception:
+            return []
 
     def _scrape_playlist_by_id(self, playlist_id: str) -> list[dict]:
         """Scrape playlist tracks from Apple Music web page."""
@@ -205,7 +248,7 @@ class AppleMusicDownloader:
     def _extract_tracks_from_json(self, data: dict) -> list[dict]:
         """Recursively search JSON for track data."""
         tracks = []
-        
+
         def search(obj):
             if isinstance(obj, dict):
                 # Check if this looks like a track
@@ -218,9 +261,25 @@ class AppleMusicDownloader:
             elif isinstance(obj, list):
                 for item in obj:
                     search(item)
-        
+
         search(data)
-        return [self._normalize_single(t) for t in tracks[:100]]  # Limit to 100
+
+        # Preserve order but remove duplicates so large playlists can be shown fully.
+        normalized = [self._normalize_single(t) for t in tracks]
+        out = []
+        seen = set()
+        for t in normalized:
+            key = (
+                str(t.get("id") or ""),
+                str(t.get("url") or ""),
+                str(t.get("title") or ""),
+                str(t.get("artist") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(t)
+        return out
 
     def _normalize_tracks(self, tracks: list[dict], album_info: dict) -> list[dict]:
         """Normalize iTunes track results into standard format."""
