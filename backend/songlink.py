@@ -124,8 +124,10 @@ class SongLinkClient:
     """Resolve any music URL to cross-platform links and ISRC."""
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = UA
+        configure_session_proxy(self.session)
 
     def resolve_url(self, url: str, region: str = "") -> dict:
         """Resolve any music platform URL to all available platform links."""

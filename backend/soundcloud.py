@@ -20,8 +20,10 @@ class SoundCloudClient:
     )
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
         self._client_id = ""
 
     def _expand_short_url(self, url: str) -> str:

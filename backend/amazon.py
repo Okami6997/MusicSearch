@@ -60,8 +60,10 @@ class AmazonDownloader:
     ASIN_RE = re.compile(r"(B[0-9A-Z]{9})")
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
         self._debug_key: str | None = None
 
     def _get_debug_key(self) -> str:

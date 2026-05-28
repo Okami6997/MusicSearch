@@ -28,9 +28,11 @@ class AmazonSearchClient:
     )
 
     def __init__(self, timeout: float = 15.0):
+        from .proxy_config import configure_session_proxy
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
 
     @staticmethod
     def _currency_for_host(host: str) -> str:
@@ -213,9 +215,11 @@ class SpotifySearchClient:
     SEARCH_SHA256 = "21b3fe49546912ba782db5c47e9ef5a7dbd20329520ba0c7d0fcfadee671d24e"
 
     def __init__(self, timeout: float = 20.0):
+        from .proxy_config import configure_session_proxy
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
         self._client_version = ""
         self._device_id = ""
         self._client_id = ""

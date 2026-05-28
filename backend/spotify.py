@@ -24,9 +24,11 @@ class SpotifyDownloader:
     _cached_token = None
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         self.session.timeout = 15
+        configure_session_proxy(self.session)
 
     # ── Token management ─────────────────────────────────────────
 

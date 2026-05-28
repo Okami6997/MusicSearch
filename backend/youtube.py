@@ -35,9 +35,11 @@ class YouTubeDownloader:
     )
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         self.session.timeout = 120
+        configure_session_proxy(self.session)
 
     # ── URL helpers ──────────────────────────────────────────────
 
@@ -421,6 +423,7 @@ class YouTubeDownloader:
                               progress_cb=None) -> str:
         """Download audio via yt-dlp (primary engine). Returns output_path."""
         import subprocess
+        from .proxy_config import get_proxy
 
         ytdlp_cmd = self._ytdlp_base_cmd()
 
@@ -436,6 +439,9 @@ class YouTubeDownloader:
             "--no-progress",
             "--quiet",
         ]
+        proxy = get_proxy()
+        if proxy:
+            cmd += ["--proxy", proxy]
         node_path = shutil.which("node")
         if node_path:
             cmd += ["--js-runtimes", f"node:{node_path}"]
@@ -461,6 +467,7 @@ class YouTubeDownloader:
                                      output_path: str, progress_cb=None) -> str:
         """Use yt-dlp ytsearch to find and download a track by text. Returns output_path."""
         import subprocess
+        from .proxy_config import get_proxy
 
         ytdlp_cmd = self._ytdlp_base_cmd()
 
@@ -477,6 +484,10 @@ class YouTubeDownloader:
             "--quiet",
             f"ytsearch1:{query}",
         ]
+        proxy = get_proxy()
+        if proxy:
+            cmd.insert(-1, "--proxy")
+            cmd.insert(-1, proxy)
         node_path = shutil.which("node")
         if node_path:
             cmd.insert(-1, "--js-runtimes")
@@ -604,6 +615,7 @@ class YouTubeDownloader:
                               filename: str = "", progress_cb=None) -> str:
         """Download audio from an arbitrary URL (e.g., SoundCloud) via yt-dlp."""
         import subprocess
+        from .proxy_config import get_proxy
 
         ytdlp_cmd = self._ytdlp_base_cmd()
 
@@ -627,6 +639,10 @@ class YouTubeDownloader:
             "--quiet",
             media_url,
         ]
+        proxy = get_proxy()
+        if proxy:
+            cmd.insert(-1, "--proxy")
+            cmd.insert(-1, proxy)
 
         node_path = shutil.which("node")
         if node_path:

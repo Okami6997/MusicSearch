@@ -2,6 +2,12 @@
 
 ## v1.4.1 (Unreleased)
 
+### New Features & Improvements
+
+- **Global Proxy Support (Warp/System Proxy)** — Added support for `WARP_PROXY` and `ALL_PROXY` environment variables. All outgoing API and download HTTP/HTTPS sessions (including Amazon Music proxy, Spotify, Tidal, Deezer, Qobuz, etc.) are seamlessly routed through the proxy when configured.
+- **SOCKS5 Support** — Included `PySocks` dependency to support SOCKS5 (`socks5://`) and DNS-resolving SOCKS5 (`socks5h://`) proxy schemes natively in Python's `requests` library.
+- **yt-dlp Proxy Integration** — Extended subprocess runners in `backend/youtube.py` to automatically pass the configured proxy address via the `--proxy` argument to `yt-dlp` for YouTube, SoundCloud, and external URL downscaling.
+
 ### Bug Fixes
 
 - **SoundCloud URL Paste: short links and sets** — `on.soundcloud.com` short links are now expanded to their canonical SoundCloud URL before parsing and resolving. SoundCloud `/sets/` links are detected as playlists and expanded into track lists instead of being misclassified as single tracks.
@@ -19,7 +25,12 @@
 
 - `app.py` — Relaxed source validation in `search_expand()` endpoint; now allows `amazon`, `youtube`, `spotify`, `deezer` for album expansion alongside `qobuz` and `itunes`; added album expansion handlers for all four sources with proper metadata extraction; added source alias normalization (`apple_music` → `itunes`, `youtube_music` → `youtube`)
 - `backend/songlink.py` — Added `parse_qs`, `urlparse` imports; enhanced `parse_music_url()` to detect Amazon track ASINs from `trackAsin` query parameter as well as URL path; added `_amazon_track_asin_from_url()` helper to extract ASIN from both URL path and query params; updated `_norm_amazon()` to use the new helper for robust track URL normalization; updated misresolved-track detection to recognize query-style Amazon URLs
-- `backend/amazon.py` — Added `parse_qs`, `urlparse` imports; enhanced `extract_asin()` to prioritize explicit `trackAsin` query parameter over album ASIN extraction, handling URL query strings robustly
+- `backend/amazon.py` — Added `parse_qs`, `urlparse` imports; enhanced `extract_asin()` to prioritize explicit `trackAsin` query parameter over album ASIN extraction, handling URL query strings robustly; integrated global proxy support
+
+- `backend/proxy_config.py` — Added global proxy helper to configure proxy sessions using `WARP_PROXY` or `ALL_PROXY`
+- `backend/youtube.py` — Configured session with global proxy and added proxy routing to `yt-dlp` commands using the `--proxy` argument
+- `backend/applemusic.py`, `backend/deezer.py`, `backend/lyrics.py`, `backend/musicbrainz.py`, `backend/qobuz.py`, `backend/soundcloud.py`, `backend/spotify.py`, `backend/tidal.py`, `backend/search.py` — Updated request sessions to automatically apply proxy settings
+- `requirements.txt` — Added `PySocks` requirement for native SOCKS5 support in `requests`
 
 ---
 

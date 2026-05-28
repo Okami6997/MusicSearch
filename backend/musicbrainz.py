@@ -12,8 +12,10 @@ class MusicBrainzClient:
     API_BASE = "https://musicbrainz.org/ws/2"
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "SongsFetch/1.0 ( hi@songsfetch.app )"
+        configure_session_proxy(self.session)
 
     def fetch_metadata(self, isrc: str, title: str = "", artist: str = "",
                        album: str = "", single_genre: bool = False) -> dict:

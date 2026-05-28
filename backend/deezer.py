@@ -20,8 +20,10 @@ class DeezerClient:
     )
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
 
     def search_tracks(self, query: str, limit: int = 10) -> list[dict]:
         """Search Deezer tracks and normalize to SongsFetch track shape."""
@@ -106,9 +108,11 @@ class DeezerDownloader:
     DEEZER_TRACK_RE = re.compile(r"deezer\.com.*?/track/(\d+)")
 
     def __init__(self, timeout: float = 60.0):
+        from .proxy_config import configure_session_proxy
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
 
     def extract_track_id(self, url: str) -> int:
         m = self.DEEZER_TRACK_RE.search(url or "")

@@ -48,8 +48,10 @@ class TidalSearchClient:
     )
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
         self.APIS = [
             "https://hifi-one.spotisaver.net",
             "https://hifi-two.spotisaver.net",
@@ -218,8 +220,10 @@ class TidalDownloader:
     )
 
     def __init__(self, api_url: str = ""):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
         self.api_url = api_url or self._pick_api()
 
     def _pick_api(self) -> str:

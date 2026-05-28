@@ -13,8 +13,10 @@ class AppleMusicDownloader:
     )
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
 
     def search_track(self, term: str, limit: int = 5):
         """Search iTunes for a track by term (title + artist)."""

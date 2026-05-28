@@ -11,8 +11,10 @@ class LyricsClient:
     BASE = "https://lrclib.net/api"
 
     def __init__(self):
+        from .proxy_config import configure_session_proxy
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "SongsFetch/1.0"
+        configure_session_proxy(self.session)
 
     def fetch(self, track: str, artist: str, album: str = "",
               duration: int = 0) -> dict:

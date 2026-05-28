@@ -1,6 +1,7 @@
 flask==3.1.0
 flask-socketio==5.5.1
 requests==2.32.3
+PySocks>=1.7.1
 mutagen==1.47.0
 yt-dlp>=2026.3.17
 Pillow==11.1.0

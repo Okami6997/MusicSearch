@@ -74,10 +74,12 @@ class QobuzDownloader:
         user_auth_token: str | None = None
 
     def __init__(self, timeout: float = 60.0, app_id: str = APP_ID):
+        from .proxy_config import configure_session_proxy
         self.timeout = timeout
         self.app_id = app_id
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
+        configure_session_proxy(self.session)
         self.progress_callback: Callable[[int, int], None] = lambda _c, _t: None
         self._creds: QobuzDownloader.Credentials | None = None
         self._qobuz_token = os.environ.get("QOBUZ_AUTH_TOKEN")

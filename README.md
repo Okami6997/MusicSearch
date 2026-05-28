@@ -76,6 +76,22 @@ Settings are available via the web UI (gear icon):
 | Embed Lyrics | On/Off | On |
 | Auto-Resample | On/Off | On |
 
+### Proxy Configuration
+
+To route API queries and download traffic through a custom or local proxy (such as Cloudflare Warp), configure the environment variables prior to start-up or directly in your `docker-compose.yml` configuration:
+
+- `WARP_PROXY` — Principal proxy endpoint (e.g. `http://127.0.0.1:40000`, `socks5h://127.0.0.1:1080`).
+- `ALL_PROXY` — Fallback proxy endpoint mapped if `WARP_PROXY` is not defined.
+
+#### Environment Setup Example
+
+```bash
+export WARP_PROXY="http://127.0.0.1:40000"
+python app.py
+```
+
+This ensures that all service query and metadata scraping requests (for Amazon Music, Tidal, Deezer, Spotify etc.) and command-line external downloads (via `yt-dlp`'s `--proxy` argument) are securely tunnelled through the proxy container/device context.
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
