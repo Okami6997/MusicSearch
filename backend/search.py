@@ -45,7 +45,12 @@ class AmazonSearchClient:
         return "USD"
 
     def _fetch_public_config(self, base_url: str) -> dict:
-        cfg = self.session.get(f"{base_url}/config.json", timeout=20).json()
+        r_cfg = self.session.get(f"{base_url}/config.json", timeout=20)
+        r_cfg.raise_for_status()
+        try:
+            cfg = r_cfg.json()
+        except Exception:
+            raise ValueError("Failed to parse config.json from Amazon search (invalid or blocked response)")
         csrf = cfg.get("csrf") or {}
         if not cfg.get("deviceId") or not cfg.get("sessionId") or not csrf.get("token"):
             raise ValueError("Amazon public config is missing required session fields")
@@ -277,7 +282,10 @@ class SpotifySearchClient:
             timeout=self.timeout,
         )
         token_resp.raise_for_status()
-        payload = token_resp.json()
+        try:
+            payload = token_resp.json()
+        except Exception:
+            raise ValueError(f"Spotify token API (status {token_resp.status_code}) returned invalid/HTML response (down or blocked)")
         self._access_token = payload.get("accessToken", "") or ""
         self._client_id = payload.get("clientId", "") or ""
 
@@ -316,7 +324,10 @@ class SpotifySearchClient:
             timeout=self.timeout,
         )
         resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            raise ValueError(f"Spotify clienttoken API (status {resp.status_code}) returned invalid/HTML response (down or blocked)")
         self._client_token = (
             (data.get("granted_token") or {}).get("token", "")
             or ""

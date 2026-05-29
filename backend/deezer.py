@@ -134,7 +134,10 @@ class DeezerDownloader:
             timeout=self.timeout,
         )
         resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            raise ValueError(f"Deezer download API (status {resp.status_code}) returned invalid/HTML response (down or blocked)")
         if not data.get("success"):
             raise ValueError("Deezer download API returned success=false")
         stream_url = data.get("links", {}).get("flac", "")

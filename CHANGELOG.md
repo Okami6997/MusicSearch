@@ -5,11 +5,13 @@
 ### New Features & Improvements
 
 - **Global Proxy Support (Warp/System Proxy)** — Added support for `WARP_PROXY` and `ALL_PROXY` environment variables. All outgoing API and download HTTP/HTTPS sessions (including Amazon Music proxy, Spotify, Tidal, Deezer, Qobuz, etc.) are seamlessly routed through the proxy when configured.
+- **Remote DNS Proxy Resolution** — Enhanced proxy SOCKS5 config to convert `socks5://` and `socks4://` configurations automatically to DNS-tunneling variants (`socks5h://`, `socks4h://`). This routes DNS requests through the SOCKS proxy itself, avoiding client-side `NameResolutionError`s when local DNS servers lack support for blocked domains.
 - **SOCKS5 Support** — Included `PySocks` dependency to support SOCKS5 (`socks5://`) and DNS-resolving SOCKS5 (`socks5h://`) proxy schemes natively in Python's `requests` library.
 - **yt-dlp Proxy Integration** — Extended subprocess runners in `backend/youtube.py` to automatically pass the configured proxy address via the `--proxy` argument to `yt-dlp` for YouTube, SoundCloud, and external URL downscaling.
 
 ### Bug Fixes
 
+- **Defensive JSON Parsing on Failing Proxy Networks** — Added try-catch defenses to raw `.json()` parsing in Deezer, Spotify, and Amazon API clients. When the proxy is down or returning HTML/Cloudflare blocks, the client raises safe, catchable, and descriptive `ValueError`s instead of crashing thread execution with raw `JSONDecodeError`s.
 - **SoundCloud URL Paste: short links and sets** — `on.soundcloud.com` short links are now expanded to their canonical SoundCloud URL before parsing and resolving. SoundCloud `/sets/` links are detected as playlists and expanded into track lists instead of being misclassified as single tracks.
 - **SoundCloud playlist tracks: full metadata hydration** — Playlist expansion now hydrates stub track objects returned by the SoundCloud API so every entry includes title, permalink URL, artist, and other required metadata. This fixes "Unknown" track titles and download requests failing with `url, isrc, or title+artist required`.
 - **SoundCloud duration handling** — SoundCloud track metadata now uses `full_duration` instead of the 30-second preview `duration` field. This prevents playlist tracks from being treated as 30s previews during validation and fixes incorrect short downloads.

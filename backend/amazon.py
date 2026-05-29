@@ -122,7 +122,10 @@ class AmazonDownloader:
                     if r.status_code == 401:
                         raise ValueError("Amazon proxy API returned 401 Unauthorized")
                     r.raise_for_status()
-                    d = r.json()
+                    try:
+                        d = r.json()
+                    except Exception:
+                        raise ValueError(f"Amazon proxy API (status {r.status_code}) returned invalid/HTML response (down or blocked)")
                     if d.get("error"):
                         raise ValueError(f"Amazon API error: {d['error']}")
                     if not d.get("streamUrl"):
@@ -147,7 +150,12 @@ class AmazonDownloader:
         host = parsed.netloc or "music.amazon.com"
         base_url = f"https://{host}"
 
-        cfg = self.session.get(f"{base_url}/config.json", timeout=20).json()
+        r_cfg = self.session.get(f"{base_url}/config.json", timeout=20)
+        r_cfg.raise_for_status()
+        try:
+            cfg = r_cfg.json()
+        except Exception:
+            raise ValueError("Failed to parse config.json from Amazon Music (likely blocked or invalid response)")
         headers_payload = {
             "x-amzn-authentication": json.dumps(
                 {
@@ -205,7 +213,10 @@ class AmazonDownloader:
             timeout=30,
         )
         resp.raise_for_status()
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception:
+            raise ValueError(f"Amazon cosmicTrack API (status {resp.status_code}) returned invalid/HTML response (likely blocked or invalid session)")
 
         template = (((data.get("methods") or [{}])[0]).get("template") or {})
         result = {
