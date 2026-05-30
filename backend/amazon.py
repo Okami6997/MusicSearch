@@ -33,6 +33,7 @@ class AmazonDownloader:
     """Download tracks from Amazon Music via API proxy."""
 
     API_BASES = [
+        "https://amz.spotbye.qzz.io/api",
         "https://amazon.spotbye.qzz.io/api",
         "https://amzn.afkarxyz.qzz.io/api",
     ]
@@ -114,11 +115,24 @@ class AmazonDownloader:
                     headers = {}
                     if "spotbye" in api_base:
                         headers["X-Debug-Key"] = self._get_debug_key()
-                    r = self.session.get(
-                        f"{api_base}/track/{asin}",
-                        headers=headers,
-                        timeout=60,
-                    )
+
+                    is_post = "amz.spotbye.qzz.io" in api_base
+
+                    if is_post:
+                        headers["Content-Type"] = "application/json"
+                        r = self.session.post(
+                            f"{api_base}/track",
+                            json={"asin": asin, "tier": "best"},
+                            headers=headers,
+                            timeout=60,
+                        )
+                    else:
+                        r = self.session.get(
+                            f"{api_base}/track/{asin}",
+                            headers=headers,
+                            timeout=60,
+                        )
+
                     if r.status_code == 401:
                         raise ValueError("Amazon proxy API returned 401 Unauthorized")
                     r.raise_for_status()
@@ -128,11 +142,26 @@ class AmazonDownloader:
                         raise ValueError(f"Amazon proxy API (status {r.status_code}) returned invalid/HTML response (down or blocked)")
                     if d.get("error"):
                         raise ValueError(f"Amazon API error: {d['error']}")
-                    if not d.get("streamUrl"):
+
+                    stream_url = ""
+                    dec_key = ""
+
+                    if isinstance(d.get("stream"), dict):
+                        stream_url = d["stream"].get("url") or ""
+                    if isinstance(d.get("drm"), dict):
+                        dec_key = d["drm"].get("key") or ""
+
+                    if not stream_url:
+                        stream_url = d.get("streamUrl") or ""
+                    if not dec_key:
+                        dec_key = d.get("decryptionKey") or ""
+
+                    if not stream_url:
                         raise ValueError("No stream URL from Amazon API")
+
                     return {
-                        "stream_url": d["streamUrl"],
-                        "decryption_key": d.get("decryptionKey", ""),
+                        "stream_url": stream_url,
+                        "decryption_key": dec_key,
                     }
                 except (requests.ConnectionError, requests.Timeout) as e:
                     if attempt < 2:

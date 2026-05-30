@@ -102,6 +102,9 @@ def parse_music_url(url: str) -> dict:
         if m:
             return {"platform": "spotify", "type": m.group(1), "id": m.group(2)}
     if "music.apple.com" in url or "itunes.apple.com" in url:
+        m = re.search(r"[?&]i=(\d+)", url)
+        if m:
+            return {"platform": "apple_music", "type": "song", "id": m.group(1)}
         m = re.search(r"/(album|playlist|song)/[^/]+/([a-zA-Z0-9._-]+)", url)
         if m:
             return {"platform": "apple_music", "type": m.group(1), "id": m.group(2)}

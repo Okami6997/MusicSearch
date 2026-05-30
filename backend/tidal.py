@@ -198,6 +198,7 @@ class TidalDownloader:
     API_TIMEOUT = 6
 
     APIS = [
+        "https://api.zarz.moe/v1/dl/tid2",
         "https://eu-central.monochrome.tf",
         "https://us-west.monochrome.tf",
         "https://api.monochrome.tf",
@@ -229,7 +230,10 @@ class TidalDownloader:
     def _pick_api(self) -> str:
         for api in self.APIS:
             try:
-                r = self.session.head(api, timeout=5)
+                if "zarz.moe" in api:
+                    r = self.session.get("https://api.zarz.moe/v1/health", timeout=5)
+                else:
+                    r = self.session.head(api, timeout=5)
                 if r.status_code < 500:
                     return api
             except Exception:
@@ -244,17 +248,41 @@ class TidalDownloader:
         return int(parts[1].split("?")[0].strip())
 
     def get_download_url(self, track_id: int, quality: str = "LOSSLESS") -> str:
-        url = f"{self.api_url}/track/?id={track_id}&quality={quality}"
-        resp = self.session.get(url, timeout=self.API_TIMEOUT)
+        api_cleaning = self.api_url.rstrip('/')
+        is_post_api = "zarz.moe" in api_cleaning or api_cleaning.endswith("/tid2")
+        headers = {"User-Agent": "SpotiFLAC-Mobile/1.0" if is_post_api else self.UA}
+
+        if is_post_api:
+            resp = self.session.post(
+                api_cleaning,
+                json={"id": str(track_id), "quality": quality},
+                headers=headers,
+                timeout=self.API_TIMEOUT,
+            )
+        else:
+            url = f"{api_cleaning}/track/?id={track_id}&quality={quality}"
+            resp = self.session.get(url, headers=headers, timeout=self.API_TIMEOUT)
+
         resp.raise_for_status()
         body = resp.json()
 
-        if isinstance(body, dict) and body.get("data", {}).get("manifest"):
-            return "MANIFEST:" + body["data"]["manifest"]
+        if isinstance(body, dict):
+            if body.get("data", {}).get("manifest"):
+                return "MANIFEST:" + body["data"]["manifest"]
+            if body.get("manifest"):
+                return "MANIFEST:" + body["manifest"]
+            if body.get("direct_download_url"):
+                return body["direct_download_url"]
+            if body.get("download_url"):
+                return body["download_url"]
+            if body.get("url"):
+                return body["url"]
+
         if isinstance(body, list):
             for item in body:
-                if item.get("OriginalTrackUrl"):
+                if isinstance(item, dict) and item.get("OriginalTrackUrl"):
                     return item["OriginalTrackUrl"]
+
         raise ValueError("No download URL in Tidal response")
 
     def _get_download_url_from_api(self, api_url: str, track_id: int, quality: str) -> str:

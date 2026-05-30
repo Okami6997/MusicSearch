@@ -4,6 +4,8 @@
 
 ### New Features & Improvements
 
+- **Bypass Audio Download Gateway Upgrades** — Integrated the latest stable open-source SpotiFLAC private bypass gateway endpoints for Deezer ([backend/deezer.py](backend/deezer.py)), Qobuz ([backend/qobuz.py](backend/qobuz.py)), Tidal ([backend/tidal.py](backend/tidal.py)), and Amazon Music ([backend/amazon.py](backend/amazon.py)) using secure POST structures and user-agent matching to ensure uninterrupted, high-quality audio downloads.
+- **Architectural Blueprint for Self-Hosted Proxies** — Authored a detailed Cloudflare Worker proxy workflow and direct deployment configuration template inside [.github/ISSUE_TEMPLATE/self-hosted-proxy-plan.md](.github/ISSUE_TEMPLATE/self-hosted-proxy-plan.md) to serve as a reliable fallback guide for self-hosted gateways.
 - **Global Proxy Support (Warp/System Proxy)** — Added support for `WARP_PROXY` and `ALL_PROXY` environment variables. All outgoing API and download HTTP/HTTPS sessions (including Amazon Music proxy, Spotify, Tidal, Deezer, Qobuz, etc.) are seamlessly routed through the proxy when configured.
 - **Remote DNS Proxy Resolution** — Enhanced proxy SOCKS5 config to convert `socks5://` and `socks4://` configurations automatically to DNS-tunneling variants (`socks5h://`, `socks4h://`). This routes DNS requests through the SOCKS proxy itself, avoiding client-side `NameResolutionError`s when local DNS servers lack support for blocked domains.
 - **SOCKS5 Support** — Included `PySocks` dependency to support SOCKS5 (`socks5://`) and DNS-resolving SOCKS5 (`socks5h://`) proxy schemes natively in Python's `requests` library.
@@ -21,18 +23,21 @@
 
 ### Files Changed
 
-- `backend/songlink.py` — Added SoundCloud short-link canonicalization (`on.soundcloud.com` -> `soundcloud.com/...`) before URL parsing so short links resolve as tracks or playlists correctly
-- `backend/soundcloud.py` — Added short-link expansion for playlist resolution; hydrated stub track objects in set responses via batched `/tracks` lookups; switched SoundCloud duration mapping from preview `duration` to `full_duration`
-- `app.py` — Added SoundCloud playlist expansion support to `/api/resolve/playlist`
+- [backend/songlink.py](backend/songlink.py) — Added SoundCloud short-link canonicalization before URL parsing so short links resolve as tracks or playlists correctly
+- [backend/soundcloud.py](backend/soundcloud.py) — Added short-link expansion for playlist resolution; hydrated stub track objects in set responses via batched `/tracks` lookups; switched SoundCloud duration mapping from preview duration to full_duration
+- [app.py](app.py) — Added SoundCloud playlist expansion support to /api/resolve/playlist and relaxed source validation in search_expand() endpoint; now allows amazon, youtube, spotify, deezer for album expansion alongside qobuz and itunes; added album expansion handlers for all four sources with proper metadata extraction; added source alias normalization (apple_music → itunes, youtube_music → youtube)
+- [backend/songlink.py](backend/songlink.py) — Added parse_qs, urlparse imports; enhanced parse_music_url() to detect Amazon track ASINs from trackAsin query parameter as well as URL path; added _amazon_track_asin_from_url() helper to extract ASIN from both URL path and query params; updated _norm_amazon() to use the new helper for robust track URL normalization; updated misresolved-track detection to recognize query-style Amazon URLs
+- [backend/amazon.py](backend/amazon.py) — Added parse_qs, urlparse imports; enhanced extract_asin() to prioritize explicit trackAsin query parameter over album ASIN extraction, handling URL query strings robustly; integrated global proxy support
 
-- `app.py` — Relaxed source validation in `search_expand()` endpoint; now allows `amazon`, `youtube`, `spotify`, `deezer` for album expansion alongside `qobuz` and `itunes`; added album expansion handlers for all four sources with proper metadata extraction; added source alias normalization (`apple_music` → `itunes`, `youtube_music` → `youtube`)
-- `backend/songlink.py` — Added `parse_qs`, `urlparse` imports; enhanced `parse_music_url()` to detect Amazon track ASINs from `trackAsin` query parameter as well as URL path; added `_amazon_track_asin_from_url()` helper to extract ASIN from both URL path and query params; updated `_norm_amazon()` to use the new helper for robust track URL normalization; updated misresolved-track detection to recognize query-style Amazon URLs
-- `backend/amazon.py` — Added `parse_qs`, `urlparse` imports; enhanced `extract_asin()` to prioritize explicit `trackAsin` query parameter over album ASIN extraction, handling URL query strings robustly; integrated global proxy support
+- [backend/amazon.py](backend/amazon.py) — Updated target proxy and endpoint to utilize stable POST-based gateway structures; implemented robust JSON parsing for response metadata fields
+- [backend/deezer.py](backend/deezer.py) — Replaced outdated download API with zarz private endpoint integration utilizing signature user-agents
+- [backend/qobuz.py](backend/qobuz.py) — Standardized download routine to send JSON POST streams to stable zarz qbz endpoints
+- [backend/tidal.py](backend/tidal.py) — Replaced multiple dead spotisaver and tidal endpoints with zarz tid2 POST integration; added dynamic parsing to handle API structural response differences
 
-- `backend/proxy_config.py` — Added global proxy helper to configure proxy sessions using `WARP_PROXY` or `ALL_PROXY`
-- `backend/youtube.py` — Configured session with global proxy and added proxy routing to `yt-dlp` commands using the `--proxy` argument
-- `backend/applemusic.py`, `backend/deezer.py`, `backend/lyrics.py`, `backend/musicbrainz.py`, `backend/qobuz.py`, `backend/soundcloud.py`, `backend/spotify.py`, `backend/tidal.py`, `backend/search.py` — Updated request sessions to automatically apply proxy settings
-- `requirements.txt` — Added `PySocks` requirement for native SOCKS5 support in `requests`
+- [backend/proxy_config.py](backend/proxy_config.py) — Added global proxy helper to configure proxy sessions using `WARP_PROXY` or `ALL_PROXY`
+- [backend/youtube.py](backend/youtube.py) — Configured session with global proxy and added proxy routing to `yt-dlp` commands using the `--proxy` argument
+- [backend/applemusic.py](backend/applemusic.py), [backend/deezer.py](backend/deezer.py), [backend/lyrics.py](backend/lyrics.py), [backend/musicbrainz.py](backend/musicbrainz.py), [backend/qobuz.py](backend/qobuz.py), [backend/soundcloud.py](backend/soundcloud.py), [backend/spotify.py](backend/spotify.py), [backend/tidal.py](backend/tidal.py), [backend/search.py](backend/search.py) — Updated request sessions to automatically apply proxy settings
+- [requirements.txt](requirements.txt) — Added PySocks requirement for native SOCKS5 support in requests
 
 ---
 

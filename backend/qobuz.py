@@ -46,6 +46,8 @@ class QobuzDownloader:
         "https://qobuz.squid.wtf/api/download-music?country=US&track_id=",
         "https://dl.musicdl.me/qobuz/download",
         "https://api.zarz.moe/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz2",
         "https://www.musicdl.me/api/qobuz/download",
     ]
 
@@ -53,6 +55,8 @@ class QobuzDownloader:
         "https://www.musicdl.me/api/qobuz/download",
         "https://dl.musicdl.me/qobuz/download",
         "https://api.zarz.moe/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz2",
     }
 
     QUALITY_FALLBACK = {
@@ -191,6 +195,8 @@ class QobuzDownloader:
 
     def _download_from_standard(self, api_base: str, track_id: int, quality: str) -> str:
         headers = {"User-Agent": self.UA}
+        if "zarz.moe" in api_base or api_base in self.MUSICDL_APIS:
+            headers["User-Agent"] = "SpotiFLAC-Mobile/1.0"
         is_musicdl = api_base in self.MUSICDL_APIS
         max_retries = 3
         for attempt in range(max_retries):

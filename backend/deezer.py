@@ -97,12 +97,10 @@ class DeezerClient:
 class DeezerDownloader:
     """Deezer downloader using Deezer metadata + direct FLAC endpoint."""
 
-    DOWNLOAD_API = "https://api.deezmate.com/dl/{track_id}"
+    DOWNLOAD_API = "https://api.zarz.moe/v1/dl/dzr"
 
     UA = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/145.0.0.0 Safari/537.36"
+        "SpotiFLAC-Mobile/1.0"
     )
 
     DEEZER_TRACK_RE = re.compile(r"deezer\.com.*?/track/(\d+)")
@@ -129,8 +127,18 @@ class DeezerDownloader:
         return d
 
     def _get_download_url(self, track_id: int) -> str:
-        resp = self.session.get(
-            self.DOWNLOAD_API.format(track_id=track_id),
+        headers = {
+            "User-Agent": "SpotiFLAC-Mobile/1.0",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "platform": "deezer",
+            "url": f"https://www.deezer.com/track/{track_id}"
+        }
+        resp = self.session.post(
+            self.DOWNLOAD_API,
+            json=payload,
+            headers=headers,
             timeout=self.timeout,
         )
         resp.raise_for_status()
@@ -139,10 +147,10 @@ class DeezerDownloader:
         except Exception:
             raise ValueError(f"Deezer download API (status {resp.status_code}) returned invalid/HTML response (down or blocked)")
         if not data.get("success"):
-            raise ValueError("Deezer download API returned success=false")
-        stream_url = data.get("links", {}).get("flac", "")
+            raise ValueError(f"Deezer download API returned error: {data.get('message', 'Unknown error')}")
+        stream_url = data.get("direct_download_url") or data.get("download_url")
         if not stream_url:
-            raise ValueError("No Deezer FLAC URL returned")
+            raise ValueError("No download URL returned by Deezer resolver")
         return stream_url
 
     def _stream_download(self, url: str, output_path: str, progress_cb=None) -> str:

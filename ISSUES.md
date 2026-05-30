@@ -1,4 +1,6 @@
 ### Currently Pending Tasks:
+- [x] Restore Deezer, Qobuz, Tidal, and Amazon Music downloads using latest SpotiFLAC bypass gateways (implemented in [backend/deezer.py](backend/deezer.py), [backend/qobuz.py](backend/qobuz.py), [backend/tidal.py](backend/tidal.py), and [backend/amazon.py](backend/amazon.py))
+- [x] Implement a future self-hosted alternative guide using Cloudflare Workers (created [.github/ISSUE_TEMPLATE/self-hosted-proxy-plan.md](.github/ISSUE_TEMPLATE/self-hosted-proxy-plan.md))
 - [x] Show the service associated with the results (e.g., Spotify, Apple Music) in the search results
 - [x] Implement Scheduled Remux functionality
 - [x] Implement Album download functionality

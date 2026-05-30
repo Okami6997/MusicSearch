@@ -322,10 +322,10 @@ class DownloadManager:
                     # ISRC indicates SongLink resolved to an album entity rather than a
                     # track, so the title would be the album name, not the track name.
                     sl_isrc = sl.get("isrc", "")
-                    if sl_isrc and not task.title:
-                        task.title = task.title or sl.get("title", "")
-                        task.artist = task.artist or sl.get("artist", "")
-                        task.album = task.album or sl.get("album", "")
+                    if sl_isrc and not self._has_real_title(task):
+                        task.title = sl.get("title", "") or task.title
+                        task.artist = sl.get("artist", "") or task.artist
+                        task.album = sl.get("album", "") or task.album
                 except Exception:
                     pass
 
@@ -336,7 +336,7 @@ class DownloadManager:
                     deezer_isrc = (deezer_meta.get("isrc") or "").upper().strip()
                     if deezer_isrc:
                         isrc = deezer_isrc
-                    if not task.title:
+                    if not self._has_real_title(task):
                         task.title = deezer_meta.get("title", "") or task.title
                     if not task.artist:
                         task.artist = deezer_meta.get("artist", {}).get("name", "") or task.artist
@@ -409,7 +409,7 @@ class DownloadManager:
                         pass
 
                 # Resolve title+artist via Qobuz for YouTube fallback search (with ISRC cache)
-                if not task.title:
+                if not self._has_real_title(task):
                     qres_cache_key = f"qobuz_isrc:{isrc}"
                     qres = self._isrc_cache.get(qres_cache_key)
                     if qres is None:
@@ -420,7 +420,7 @@ class DownloadManager:
                         except Exception:
                             qres = {}
                     if qres and qres.get("title") and qres.get("artist"):
-                        task.title = task.title or qres.get("title", "")
+                        task.title = qres.get("title", "") or task.title
                         task.artist = task.artist or qres.get("artist", "")
                         task.album = task.album or qres.get("album", "")
 
@@ -430,11 +430,11 @@ class DownloadManager:
             if apple_music_url:
                 try:
                     tracks = self.applemusic.expand_album(apple_music_url)
-                    if tracks and not task.title:
+                    if tracks and not self._has_real_title(task):
                         t = tracks[0]
-                        task.title = task.title or t.get("title", "")
-                        task.artist = task.artist or t.get("artist", "")
-                        task.album = task.album or t.get("album", "")
+                        task.title = t.get("title", "") or task.title
+                        task.artist = t.get("artist", "") or task.artist
+                        task.album = t.get("album", "") or task.album
                         task.track_number = task.track_number or t.get("track_number", 0)
                         task.total_tracks = task.total_tracks or t.get("total_tracks", 0)
                         task.disc_number = task.disc_number or t.get("disc_number", 1)
