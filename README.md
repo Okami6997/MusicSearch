@@ -135,6 +135,9 @@ export SPOTIFLAC_DISPATCH_EVENT="spotiflac_proxy_update"
 export SPOTIFLAC_DISPATCH_WEBHOOK_SECRET="your-shared-secret"
 ```
 
+If `SPOTIFLAC_DISPATCH_TOKEN` is not set, the app will try `gh auth token`
+as a fallback (works when GitHub CLI is installed and authenticated on the host).
+
 Configure the external webhook payload URL as:
 
 - `https://<your-server>/webhooks/spotiflac-dispatch`

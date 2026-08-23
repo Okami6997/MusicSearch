@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import subprocess
 import time
 import uuid
 from datetime import datetime
@@ -1892,6 +1893,35 @@ def _verify_github_signature(payload_bytes: bytes, signature_header: str, secret
     return hmac.compare_digest(expected, signature_header)
 
 
+def _get_dispatch_token() -> str:
+    """Return GitHub token for repository_dispatch.
+
+    Priority:
+    1) SPOTIFLAC_DISPATCH_TOKEN env var
+    2) GitHub CLI auth token (`gh auth token`) when available
+    """
+    token = os.environ.get("SPOTIFLAC_DISPATCH_TOKEN", "").strip()
+    if token:
+        return token
+
+    try:
+        proc = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=4,
+            check=False,
+        )
+        if proc.returncode == 0:
+            gh_token = (proc.stdout or "").strip()
+            if gh_token:
+                return gh_token
+    except Exception:
+        pass
+
+    return ""
+
+
 @app.route("/api/proxies/refresh", methods=["POST"])
 def refresh_proxies():
     """Manually refresh provider proxies from the upstream SpotiFLAC registry."""
@@ -1963,11 +1993,11 @@ def webhook_spotiflac_dispatch():
         return jsonify({"ok": True, "ignored": True, "reason": f"event {event} not handled"})
 
     dispatch_repo = os.environ.get("SPOTIFLAC_DISPATCH_TARGET_REPO", "Okami6997/MusicSearch").strip()
-    dispatch_token = os.environ.get("SPOTIFLAC_DISPATCH_TOKEN", "").strip()
+    dispatch_token = _get_dispatch_token()
     dispatch_event_type = os.environ.get("SPOTIFLAC_DISPATCH_EVENT", "spotiflac_proxy_update").strip() or "spotiflac_proxy_update"
 
     if not dispatch_token:
-        return jsonify({"error": "SPOTIFLAC_DISPATCH_TOKEN is not configured"}), 500
+        return jsonify({"error": "SPOTIFLAC_DISPATCH_TOKEN is not configured and `gh auth token` is unavailable"}), 500
 
     dispatch_url = f"https://api.github.com/repos/{dispatch_repo}/dispatches"
     client_payload = {
@@ -2012,11 +2042,11 @@ def webhook_spotiflac_dispatch():
 def dispatch_proxy_sync():
     """Manually trigger GitHub repository_dispatch for proxy sync workflow."""
     dispatch_repo = os.environ.get("SPOTIFLAC_DISPATCH_TARGET_REPO", "Okami6997/MusicSearch").strip()
-    dispatch_token = os.environ.get("SPOTIFLAC_DISPATCH_TOKEN", "").strip()
+    dispatch_token = _get_dispatch_token()
     dispatch_event_type = os.environ.get("SPOTIFLAC_DISPATCH_EVENT", "spotiflac_proxy_update").strip() or "spotiflac_proxy_update"
 
     if not dispatch_token:
-        return jsonify({"error": "SPOTIFLAC_DISPATCH_TOKEN is not configured"}), 500
+        return jsonify({"error": "SPOTIFLAC_DISPATCH_TOKEN is not configured and `gh auth token` is unavailable"}), 500
 
     dispatch_url = f"https://api.github.com/repos/{dispatch_repo}/dispatches"
     client_payload = {
