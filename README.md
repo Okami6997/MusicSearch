@@ -114,6 +114,31 @@ export SPOTIFLAC_WEBHOOK_SECRET="your-shared-secret"
 
 If `SPOTIFLAC_WEBHOOK_SECRET` is set, the app validates `X-Hub-Signature-256`.
 
+### Instant GitHub Trigger Bridge
+
+If you want an external webhook to trigger your repository workflow immediately,
+use the dispatch bridge endpoint:
+
+- `POST /webhooks/spotiflac-dispatch`
+
+It forwards incoming upstream webhook events to GitHub `repository_dispatch`,
+which triggers `.github/workflows/sync-upstream-proxies.yml` (event type
+`spotiflac_proxy_update`).
+
+Required environment variables:
+
+```bash
+export SPOTIFLAC_DISPATCH_TOKEN="<github_token_with_repo_scope>"
+export SPOTIFLAC_DISPATCH_TARGET_REPO="Okami6997/MusicSearch"
+# Optional overrides:
+export SPOTIFLAC_DISPATCH_EVENT="spotiflac_proxy_update"
+export SPOTIFLAC_DISPATCH_WEBHOOK_SECRET="your-shared-secret"
+```
+
+Configure the external webhook payload URL as:
+
+- `https://<your-server>/webhooks/spotiflac-dispatch`
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -132,6 +157,7 @@ If `SPOTIFLAC_WEBHOOK_SECRET` is set, the app validates `X-Hub-Signature-256`.
 | GET | `/api/queue` | Get download queue |
 | POST | `/api/proxies/refresh` | Force-refresh provider proxy endpoints from upstream registry |
 | POST | `/webhooks/spotiflac-proxies` | GitHub webhook receiver to auto-refresh proxy endpoints |
+| POST | `/webhooks/spotiflac-dispatch` | Webhook bridge that triggers GitHub `repository_dispatch` |
 | POST | `/api/queue/clear` | Clear completed downloads |
 | POST | `/api/analysis` | Analyze audio file metadata |
 | POST | `/api/analysis/batch` | Analyze multiple files |

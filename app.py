@@ -1939,6 +1939,75 @@ def webhook_spotiflac_proxies():
         return jsonify({"error": f"webhook proxy refresh failed: {str(e)}"}), 500
 
 
+@app.route("/webhooks/spotiflac-dispatch", methods=["POST"])
+def webhook_spotiflac_dispatch():
+    """Forward upstream webhook events to GitHub repository_dispatch.
+
+    This is useful when you want an external webhook to trigger the
+    `sync-upstream-proxies.yml` workflow in your repository immediately.
+    """
+    event = request.headers.get("X-GitHub-Event", "")
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    payload_bytes = request.get_data() or b""
+
+    secret = os.environ.get("SPOTIFLAC_DISPATCH_WEBHOOK_SECRET", "") or os.environ.get("SPOTIFLAC_WEBHOOK_SECRET", "")
+    if not _verify_github_signature(payload_bytes, signature, secret):
+        return jsonify({"error": "invalid webhook signature"}), 401
+
+    body = request.get_json(silent=True) or {}
+    repo_full_name = ((body.get("repository") or {}).get("full_name") or "").strip()
+    if repo_full_name and repo_full_name.lower() != REGISTRY_SOURCE_REPO.lower():
+        return jsonify({"ok": True, "ignored": True, "reason": "unrelated repository"})
+
+    if event not in {"push", "release", "workflow_run"}:
+        return jsonify({"ok": True, "ignored": True, "reason": f"event {event} not handled"})
+
+    dispatch_repo = os.environ.get("SPOTIFLAC_DISPATCH_TARGET_REPO", "Okami6997/MusicSearch").strip()
+    dispatch_token = os.environ.get("SPOTIFLAC_DISPATCH_TOKEN", "").strip()
+    dispatch_event_type = os.environ.get("SPOTIFLAC_DISPATCH_EVENT", "spotiflac_proxy_update").strip() or "spotiflac_proxy_update"
+
+    if not dispatch_token:
+        return jsonify({"error": "SPOTIFLAC_DISPATCH_TOKEN is not configured"}), 500
+
+    dispatch_url = f"https://api.github.com/repos/{dispatch_repo}/dispatches"
+    client_payload = {
+        "source_repo": repo_full_name or REGISTRY_SOURCE_REPO,
+        "source_event": event,
+        "source_delivery": request.headers.get("X-GitHub-Delivery", ""),
+        "triggered_at": int(time.time()),
+    }
+
+    try:
+        resp = http_requests.post(
+            dispatch_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {dispatch_token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "SongsFetch-Dispatch/1.0",
+            },
+            json={
+                "event_type": dispatch_event_type,
+                "client_payload": client_payload,
+            },
+            timeout=12,
+        )
+        if resp.status_code not in (200, 201, 202, 204):
+            return jsonify({
+                "error": "repository_dispatch failed",
+                "status_code": resp.status_code,
+                "response": (resp.text or "")[:500],
+            }), 502
+        return jsonify({
+            "ok": True,
+            "dispatched": True,
+            "target_repo": dispatch_repo,
+            "event_type": dispatch_event_type,
+        })
+    except Exception as e:
+        return jsonify({"error": f"dispatch failed: {str(e)}"}), 500
+
+
 # ── Settings ─────────────────────────────────────────────────
 
 @app.route("/api/settings", methods=["GET"])

@@ -11,3 +11,4 @@ build/
 .venv/
 .claude/*
 !.claude/skills/
+.songsfetch-settings.json
