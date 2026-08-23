@@ -9,6 +9,8 @@ import re
 
 import requests
 
+from .upstream_proxy_registry import provider_overrides
+
 
 class DeezerClient:
     """Search Deezer tracks via the public API."""
@@ -111,6 +113,15 @@ class DeezerDownloader:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         configure_session_proxy(self.session)
+        self.download_apis = [self.DOWNLOAD_API]
+        try:
+            overrides = provider_overrides()
+            preferred = list(overrides.get("deezer_api_candidates", []) or [])
+            preferred.append(self.DOWNLOAD_API)
+            seen = set()
+            self.download_apis = [u for u in preferred if u and not (u in seen or seen.add(u))]
+        except Exception:
+            pass
 
     def extract_track_id(self, url: str) -> int:
         m = self.DEEZER_TRACK_RE.search(url or "")
@@ -135,23 +146,37 @@ class DeezerDownloader:
             "platform": "deezer",
             "url": f"https://www.deezer.com/track/{track_id}"
         }
-        resp = self.session.post(
-            self.DOWNLOAD_API,
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
-        try:
-            data = resp.json()
-        except Exception:
-            raise ValueError(f"Deezer download API (status {resp.status_code}) returned invalid/HTML response (down or blocked)")
-        if not data.get("success"):
-            raise ValueError(f"Deezer download API returned error: {data.get('message', 'Unknown error')}")
-        stream_url = data.get("direct_download_url") or data.get("download_url")
-        if not stream_url:
-            raise ValueError("No download URL returned by Deezer resolver")
-        return stream_url
+        errors = []
+        for api_url in self.download_apis:
+            try:
+                resp = self.session.post(
+                    api_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                try:
+                    data = resp.json()
+                except Exception:
+                    raise ValueError(f"{api_url} returned invalid/HTML response")
+                if data.get("success") is False:
+                    raise ValueError(data.get("message", "success=false"))
+
+                stream_url = (
+                    data.get("direct_download_url")
+                    or data.get("download_url")
+                    or data.get("url")
+                    or ((data.get("data") or {}).get("url") if isinstance(data.get("data"), dict) else "")
+                )
+                if stream_url:
+                    return stream_url
+                raise ValueError("missing stream URL")
+            except Exception as exc:
+                errors.append(f"{api_url}: {exc}")
+                continue
+
+        raise ValueError("Deezer download API failed: " + "; ".join(errors))
 
     def _stream_download(self, url: str, output_path: str, progress_cb=None) -> str:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)

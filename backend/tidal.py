@@ -11,6 +11,8 @@ from typing import Optional
 
 import requests
 
+from .upstream_proxy_registry import merge_proxy_list, provider_overrides
+
 
 def _retry_with_backoff(
     func,
@@ -56,6 +58,11 @@ class TidalSearchClient:
             "https://hifi-one.spotisaver.net",
             "https://hifi-two.spotisaver.net",
         ]
+        try:
+            overrides = provider_overrides()
+            self.APIS = merge_proxy_list(self.APIS, overrides.get("tidal_stream", []))
+        except Exception:
+            pass
         self._api_url: str = ""
         self.last_status: str = "unknown"
         self.last_error: str = ""
@@ -225,10 +232,17 @@ class TidalDownloader:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         configure_session_proxy(self.session)
+        self.api_pool = list(self.APIS)
+        try:
+            overrides = provider_overrides()
+            preferred = (overrides.get("tidal_post", []) or []) + (overrides.get("tidal_stream", []) or [])
+            self.api_pool = merge_proxy_list(self.api_pool, preferred)
+        except Exception:
+            pass
         self.api_url = api_url or self._pick_api()
 
     def _pick_api(self) -> str:
-        for api in self.APIS:
+        for api in self.api_pool:
             try:
                 if "zarz.moe" in api:
                     r = self.session.get("https://api.zarz.moe/v1/health", timeout=5)
@@ -238,7 +252,7 @@ class TidalDownloader:
                     return api
             except Exception:
                 continue
-        return self.APIS[0]
+        return self.api_pool[0]
 
     @staticmethod
     def parse_track_id(tidal_url: str) -> int:

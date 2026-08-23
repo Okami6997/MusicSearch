@@ -8,6 +8,8 @@ from urllib.parse import quote
 
 import requests
 
+from .upstream_proxy_registry import provider_overrides
+
 
 class YouTubeDownloader:
     """Download audio from YouTube Music via SpotubeDL / Cobalt proxy APIs.
@@ -40,6 +42,23 @@ class YouTubeDownloader:
         self.session.headers["User-Agent"] = self.UA
         self.session.timeout = 120
         configure_session_proxy(self.session)
+        self.cobalt_endpoints = ["https://api.qwkuns.me"]
+        try:
+            overrides = provider_overrides()
+            preferred = list(overrides.get("youtube_cobalt", []) or []) + self.cobalt_endpoints
+            seen = set()
+            self.cobalt_endpoints = [u for u in preferred if u and not (u in seen or seen.add(u))]
+        except Exception:
+            pass
+
+    @staticmethod
+    def _yt_dlp_common_args() -> list[str]:
+        """Common yt-dlp options that reduce 403s and noisy update warnings."""
+        return [
+            "--no-update",
+            "--extractor-args", "youtube:player_client=android,web",
+            "--add-header", "Accept-Language:en-US,en;q=0.9",
+        ]
 
     # ── URL helpers ──────────────────────────────────────────────
 
@@ -431,6 +450,7 @@ class YouTubeDownloader:
         tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
         cmd = [
             *ytdlp_cmd,
+            *self._yt_dlp_common_args(),
             "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -475,6 +495,7 @@ class YouTubeDownloader:
         tmp_template = os.path.splitext(output_path)[0] + ".%(ext)s"
         cmd = [
             *ytdlp_cmd,
+            *self._yt_dlp_common_args(),
             "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",
@@ -539,22 +560,24 @@ class YouTubeDownloader:
             "filenameStyle": "basic",
             "disableMetadata": True,
         }
-        try:
-            resp = self.session.post(
-                "https://api.qwkuns.me",
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                timeout=15,
-            )
-            if resp.status_code == 200:
+        for endpoint in self.cobalt_endpoints:
+            try:
+                resp = self.session.post(
+                    endpoint,
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    continue
                 data = resp.json()
                 if data.get("status") in ("tunnel", "redirect") and data.get("url"):
                     return data["url"]
-        except Exception:
-            pass
+            except Exception:
+                continue
         return ""
 
     def _download_via_proxy(self, video_id: str, output_path: str,
@@ -630,6 +653,7 @@ class YouTubeDownloader:
 
         cmd = [
             *ytdlp_cmd,
+            *self._yt_dlp_common_args(),
             "--no-playlist",
             "--extract-audio",
             "--audio-format", "mp3",

@@ -1,6 +1,8 @@
 """SongsFetch - Flask web application for music search and download."""
 
 import importlib.metadata
+import hmac
+import hashlib
 import json
 import logging
 import os
@@ -20,7 +22,13 @@ from backend.lyrics import LyricsClient
 from backend.downloader import DownloadManager
 from backend.musicbrainz import MusicBrainzClient
 from backend.youtube import YouTubeDownloader
+from backend.proxy_config import disable_unreachable_local_proxies
+from backend.upstream_proxy_registry import refresh_registry, REGISTRY_SOURCE_REPO
 from backend import analysis, resample, filemanager, history
+
+# If shell proxy variables point to an unavailable localhost proxy,
+# clear them so requests can use direct connections.
+disable_unreachable_local_proxies()
 
 try:
     import eventlet
@@ -1872,6 +1880,63 @@ def _check_for_updates():
 @app.route("/api/check-update", methods=["GET"])
 def check_update():
     return jsonify(_check_for_updates())
+
+
+def _verify_github_signature(payload_bytes: bytes, signature_header: str, secret: str) -> bool:
+    if not secret:
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    digest = hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+    expected = f"sha256={digest}"
+    return hmac.compare_digest(expected, signature_header)
+
+
+@app.route("/api/proxies/refresh", methods=["POST"])
+def refresh_proxies():
+    """Manually refresh provider proxies from the upstream SpotiFLAC registry."""
+    try:
+        summary = refresh_registry()
+        download_manager.reload_provider_clients()
+        return jsonify({
+            **summary,
+            "reloaded": True,
+        })
+    except Exception as e:
+        return jsonify({"error": f"proxy refresh failed: {str(e)}"}), 500
+
+
+@app.route("/webhooks/spotiflac-proxies", methods=["POST"])
+def webhook_spotiflac_proxies():
+    """GitHub webhook receiver to refresh proxy endpoints after upstream updates."""
+    event = request.headers.get("X-GitHub-Event", "")
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    payload_bytes = request.get_data() or b""
+    secret = os.environ.get("SPOTIFLAC_WEBHOOK_SECRET", "")
+
+    if not _verify_github_signature(payload_bytes, signature, secret):
+        return jsonify({"error": "invalid webhook signature"}), 401
+
+    body = request.get_json(silent=True) or {}
+    repo_full_name = ((body.get("repository") or {}).get("full_name") or "").strip()
+    if repo_full_name and repo_full_name.lower() != REGISTRY_SOURCE_REPO.lower():
+        return jsonify({"ok": True, "ignored": True, "reason": "unrelated repository"})
+
+    # Accept only events that imply endpoint changes may have happened.
+    if event not in {"push", "release", "workflow_run"}:
+        return jsonify({"ok": True, "ignored": True, "reason": f"event {event} not handled"})
+
+    try:
+        summary = refresh_registry()
+        download_manager.reload_provider_clients()
+        return jsonify({
+            **summary,
+            "event": event,
+            "repository": repo_full_name or REGISTRY_SOURCE_REPO,
+            "reloaded": True,
+        })
+    except Exception as e:
+        return jsonify({"error": f"webhook proxy refresh failed: {str(e)}"}), 500
 
 
 # ── Settings ─────────────────────────────────────────────────

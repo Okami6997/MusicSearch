@@ -11,6 +11,8 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
+from .upstream_proxy_registry import merge_proxy_list, provider_overrides
+
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except Exception:
@@ -65,6 +67,12 @@ class AmazonDownloader:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         configure_session_proxy(self.session)
+        self.api_bases = list(self.API_BASES)
+        try:
+            overrides = provider_overrides()
+            self.api_bases = merge_proxy_list(self.api_bases, overrides.get("amazon_api_bases", []))
+        except Exception:
+            pass
         self._debug_key: str | None = None
 
     def _get_debug_key(self) -> str:
@@ -109,7 +117,7 @@ class AmazonDownloader:
 
     def get_stream(self, asin: str) -> dict:
         errors = []
-        for api_base in self.API_BASES:
+        for api_base in self.api_bases:
             for attempt in range(3):
                 try:
                     headers = {}

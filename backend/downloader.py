@@ -198,6 +198,15 @@ class DownloadManager:
                 set(self.tasks.keys())
             )
 
+    def reload_provider_clients(self):
+        """Re-create provider clients so refreshed endpoint overrides are picked up."""
+        self.tidal = TidalDownloader()
+        self.qobuz = QobuzDownloader()
+        self.amazon = AmazonDownloader()
+        self.deezer = DeezerDownloader()
+        self.youtube = YouTubeDownloader()
+        self.spotify = SpotifyDownloader()
+
     def _ensure_running(self):
         if not self._running:
             self._running = True

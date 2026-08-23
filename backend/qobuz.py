@@ -11,8 +11,23 @@ from typing import Callable, Dict
 
 import requests
 
+from .upstream_proxy_registry import merge_proxy_list, provider_overrides
+
 
 def build_qobuz_api_url(api_base: str, track_id: int, quality: str) -> str:
+    base = (api_base or "").strip()
+    if not base:
+        return ""
+    if base.endswith("/track/"):
+        return f"{base}{track_id}?quality={quality}"
+    if "trackId=" in base or "track_id=" in base:
+        sep = "&" if "?" in base else "?"
+        return f"{base}{track_id}{sep}quality={quality}"
+    if base.endswith("?"):
+        return f"{base}track_id={track_id}&quality={quality}"
+    if "download-music?" in base and "track_id=" not in base and "trackId=" not in base:
+        sep = "" if base.endswith("?") else "&"
+        return f"{base}{sep}track_id={track_id}&quality={quality}"
     if "qbz.afkarxyz.fun" in api_base or "qbz.afkarxyz.qzz.io" in api_base:
         return f"{api_base}{track_id}?quality={quality}"
     return f"{api_base}{track_id}&quality={quality}"
@@ -84,6 +99,13 @@ class QobuzDownloader:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         configure_session_proxy(self.session)
+        try:
+            overrides = provider_overrides()
+            preferred_apis = (overrides.get("qobuz_stream", []) or []) + (overrides.get("qobuz_dl", []) or []) + (overrides.get("qobuz_post", []) or [])
+            self.APIS = merge_proxy_list(self.APIS, preferred_apis)
+            self.MUSICDL_APIS = set(self.MUSICDL_APIS).union(set(overrides.get("qobuz_post", []) or []))
+        except Exception:
+            pass
         self.progress_callback: Callable[[int, int], None] = lambda _c, _t: None
         self._creds: QobuzDownloader.Credentials | None = None
         self._qobuz_token = os.environ.get("QOBUZ_AUTH_TOKEN")

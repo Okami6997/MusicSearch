@@ -1,0 +1,104 @@
+{
+  "_fetched_at": 1787486697,
+  "registry": {
+    "amazon": {
+      "antra": "https://amazon.anandserver.cfd",
+      "community": "https://amz-oss.spotbye.qzz.io/api/dl",
+      "mono": "https://amz.geeked.wtf/api/track/",
+      "mono_verify": "https://amz.geeked.wtf/api/auth/turnstile",
+      "musicdl": "https://dl.musicdl.me/download",
+      "s": "https://amz.squid.wtf/api",
+      "s_challenge": "https://amz.squid.wtf/api/captcha/challenge",
+      "s_home": "https://amz.squid.wtf/",
+      "s_queue": "https://amz.squid.wtf/api/queue",
+      "s_stream": "https://amz.squid.wtf/api/stream",
+      "s_verify": "https://amz.squid.wtf/api/captcha/verify"
+    },
+    "apple_music": {
+      "proxy_direct": "https://api.zarz.moe/v1/dl/app2",
+      "proxy_queued": "https://api.zarz.moe/v1/dl/app"
+    },
+    "community": {
+      "amazon": "https://amz-oss.spotbye.qzz.io/api/dl",
+      "deezer": "https://dz-foss.spotbye.qzz.io/api/dl",
+      "qobuz": "https://qbz-oss.spotbye.qzz.io/api/dl",
+      "tidal": "https://tdl-oss.spotbye.qzz.io/api/dl",
+      "verify": "https://verify.spotbye.qzz.io"
+    },
+    "deezer": {
+      "antra": "https://deezer.anandserver.cfd",
+      "flacdownloader_asset": "https://flacdownloader.com/qobuz-asset",
+      "flacdownloader_prepare": "https://flacdownloader.com/prepare",
+      "s_deezer": "https://deemix.squid.wtf/api/"
+    },
+    "health": {
+      "zarz": "https://api.zarz.moe/v1/health"
+    },
+    "joox": {
+      "gdstudio": "https://music-api.gdstudio.xyz/api.php",
+      "wjhe": "https://music.wjhe.top/api/music/joox"
+    },
+    "kuwo": {
+      "gdstudio": "https://music-api.gdstudio.xyz/api.php"
+    },
+    "migu": {
+      "wjhe_base": "https://music.wjhe.top/api.php",
+      "wjhe_stream": "https://music.wjhe.top/api/music/migu/url"
+    },
+    "monochrome-token": {
+      "token": "Bearer eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwic2NvcGUiOiIiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzNTU3LCJhdCI6IklOVEVSTkFMIiwiZXhwIjoxNzg3NDYyMzc3LCJpc3MiOiJodHRwczovL2F1dGgudGlkYWwuY29tL3YxIn0.D9mQGLziCsscysLctmuD6G7sf-WP0zc80FIfWKilxZmrv6wZVnbb_vdJgneK-wOi_IhtRLc0piND_QVg58mPTw"
+    },
+    "netease": {
+      "gdstudio": "https://music-api.gdstudio.xyz/api.php"
+    },
+    "pandora": {
+      "zarz_base": "https://api.zarz.moe",
+      "zarz_dl": "/v1/dl/pan"
+    },
+    "qobuz": {
+      "community": "https://qbz-oss.spotbye.qzz.io/api/dl",
+      "dl": [
+        "https://qobuz.kennyy.com.br/api/download-music?",
+        "https://qobuz.squid.wtf/api/download-music?",
+        "https://mono.scavengerfurs.net/api/download-music?"
+      ],
+      "flacdownloader": "https://flacdownloader.com/qobuz-asset",
+      "post": [
+        "https://api.zarz.moe/v1/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz2"
+      ],
+      "stream": [
+        "https://qobuz.anandserver.cfd",
+        "https://qbz.afkarxyz.qzz.io/api/track/",
+        "https://qobuz.spotbye.qzz.io/api/track/"
+      ]
+    },
+    "soundcloud": {
+      "cobalt": "https://api.zarz.moe/v1/dl/cobalt/"
+    },
+    "tidal": {
+      "community": "https://tdl-oss.spotbye.qzz.io/api/dl",
+      "post": [
+        "https://api.zarz.moe/v1/dl/tid2"
+      ],
+      "stream": [
+        "https://tidal.anandserver.cfd"
+      ]
+    },
+    "youtube": {
+      "cobalt": [
+        "https://co.wuk.sh",
+        "https://cobalt.qiaeru.tech",
+        "https://cobalt.cibere.dev",
+        "https://cobalt.owo.vc",
+        "https://api.cobalt.tools"
+      ],
+      "zarz_clean": [
+        "https://api.zarz.moe"
+      ],
+      "zarz_dl": [
+        "https://api.zarz.moe/v1/dl/yt"
+      ]
+    }
+  }
+}

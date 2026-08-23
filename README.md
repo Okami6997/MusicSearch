@@ -92,6 +92,28 @@ python app.py
 
 This ensures that all service query and metadata scraping requests (for Amazon Music, Tidal, Deezer, Spotify etc.) and command-line external downloads (via `yt-dlp`'s `--proxy` argument) are securely tunnelled through the proxy container/device context.
 
+### Upstream Proxy Auto-Sync (SpotiFLAC Registry)
+
+Provider endpoint pools for Tidal/Qobuz/Amazon/Deezer can now be synced from the upstream SpotiFLAC cloud registry used by:
+
+- `https://github.com/BartolomeoRusso9/SpotiFLAC-Module-Version`
+
+Manual refresh endpoint:
+
+- `POST /api/proxies/refresh`
+
+GitHub webhook endpoint (automatic refresh on upstream changes):
+
+- `POST /webhooks/spotiflac-proxies`
+
+Optional webhook signature secret:
+
+```bash
+export SPOTIFLAC_WEBHOOK_SECRET="your-shared-secret"
+```
+
+If `SPOTIFLAC_WEBHOOK_SECRET` is set, the app validates `X-Hub-Signature-256`.
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -108,6 +130,8 @@ This ensures that all service query and metadata scraping requests (for Amazon M
 | POST | `/api/download/album` | Download all tracks from an album |
 | POST | `/api/download/playlist` | Download all tracks from a playlist |
 | GET | `/api/queue` | Get download queue |
+| POST | `/api/proxies/refresh` | Force-refresh provider proxy endpoints from upstream registry |
+| POST | `/webhooks/spotiflac-proxies` | GitHub webhook receiver to auto-refresh proxy endpoints |
 | POST | `/api/queue/clear` | Clear completed downloads |
 | POST | `/api/analysis` | Analyze audio file metadata |
 | POST | `/api/analysis/batch` | Analyze multiple files |
