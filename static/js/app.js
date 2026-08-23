@@ -2034,6 +2034,29 @@
         }
     });
 
+    $("#btn-sync-proxies").addEventListener("click", async () => {
+        const btn = $("#btn-sync-proxies");
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Syncing...";
+        try {
+            const resp = await fetch("/api/proxies/dispatch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.error) {
+                throw new Error(data.error || "Failed to trigger proxy sync");
+            }
+            toast(`Proxy sync dispatched for ${data.target_repo}`, "success");
+        } catch (e) {
+            toast(e.message || "Failed to trigger proxy sync", "error");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    });
+
     // ── Auto-fill download directory in tabs ─────────────────
     async function fillDownloadDir() {
         try {
