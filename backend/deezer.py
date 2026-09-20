@@ -99,7 +99,7 @@ class DeezerClient:
 class DeezerDownloader:
     """Deezer downloader using Deezer metadata + direct FLAC endpoint."""
 
-    DOWNLOAD_API = "https://api.zarz.moe/v1/dl/dzr"
+    DOWNLOAD_API = ""
 
     UA = (
         "SpotiFLAC-Mobile/1.0"

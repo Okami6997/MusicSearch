@@ -7,6 +7,8 @@ import time
 
 import requests
 
+from .upstream_proxy_registry import provider_overrides
+
 
 class SpotifyDownloader:
     """Download FLAC tracks from Spotify via SpotiDownloader proxy API.
@@ -29,6 +31,10 @@ class SpotifyDownloader:
         self.session.headers["User-Agent"] = self.UA
         self.session.timeout = 15
         configure_session_proxy(self.session)
+        overrides = provider_overrides()
+        self.session_url = (overrides.get("spotify_session") or [""])[0]
+        self.token_url = (overrides.get("spotify_token") or [""])[0]
+        self.download_url = (overrides.get("spotify_download") or [""])[0]
 
     # ── Token management ─────────────────────────────────────────
 
@@ -45,7 +51,7 @@ class SpotifyDownloader:
         for attempt in range(3):
             try:
                 resp = self.session.post(
-                    "https://api.spotidownloader.com/session",
+                    self.session_url,
                     json={"token": ""},
                     headers={
                         "Content-Type": "application/json",
@@ -66,7 +72,7 @@ class SpotifyDownloader:
             # Fallback: try legacy token endpoint
             try:
                 resp = self.session.get(
-                    "https://spdl.afkarxyz.fun/token", timeout=5
+                    self.token_url, timeout=5
                 )
                 if resp.status_code == 200:
                     token = resp.json().get("token", "")
@@ -162,7 +168,7 @@ class SpotifyDownloader:
             "User-Agent": self.UA,
         }
         resp = self.session.post(
-            "https://api.spotidownloader.com/download",
+            self.download_url,
             json={"id": track_id, "flac": True},
             headers=headers,
             timeout=15,

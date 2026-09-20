@@ -1,6 +1,68 @@
 {
-  "_fetched_at": 1789881844,
+  "_fetched_at": 1789914884,
   "registry": {
+    "fallbacks": {
+      "amazon_api_bases": [
+        "https://amz.spotbye.qzz.io/api",
+        "https://amazon.spotbye.qzz.io/api",
+        "https://amzn.afkarxyz.qzz.io/api"
+      ],
+      "deezer_api_candidates": [
+        "https://api.zarz.moe/v1/dl/dzr"
+      ],
+      "qobuz_dl": [
+        "https://qobuz.squid.wtf/api/download-music?",
+        "https://dl.musicdl.me/qobuz/download",
+        "https://www.musicdl.me/api/qobuz/download"
+      ],
+      "qobuz_post": [
+        "https://api.zarz.moe/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz",
+        "https://api.zarz.moe/v1/dl/qbz2"
+      ],
+      "qobuz_stream": [
+        "https://dab.yeet.su/api/stream?trackId=",
+        "https://dabmusic.xyz/api/stream?trackId=",
+        "https://qbz.afkarxyz.qzz.io/api/track/",
+        "https://qobuz.spotbye.qzz.io/api/track/"
+      ],
+      "spotify_download": [
+        "https://api.spotidownloader.com/download"
+      ],
+      "spotify_session": [
+        "https://api.spotidownloader.com/session"
+      ],
+      "spotify_token": [
+        "https://spdl.afkarxyz.fun/token"
+      ],
+      "tidal_post": [
+        "https://api.zarz.moe/v1/dl/tid2",
+        "https://eu-central.monochrome.tf",
+        "https://us-west.monochrome.tf",
+        "https://api.monochrome.tf",
+        "https://monochrome-api.samidy.com",
+        "https://tidal-api.binimum.org",
+        "https://tidal.kinoplus.online",
+        "https://triton.squid.wtf",
+        "https://vogel.qqdl.site",
+        "https://maus.qqdl.site",
+        "https://hund.qqdl.site",
+        "https://katze.qqdl.site",
+        "https://wolf.qqdl.site",
+        "https://hifi-one.spotisaver.net",
+        "https://hifi-two.spotisaver.net"
+      ],
+      "tidal_stream": [
+        "https://hifi-one.spotisaver.net",
+        "https://hifi-two.spotisaver.net"
+      ],
+      "youtube_cobalt": [
+        "https://api.qwkuns.me"
+      ],
+      "youtube_spotubedl": [
+        "https://spotubedl.com"
+      ]
+    },
     "acoustid": {
       "client": "bDjK6RXxPL",
       "lookup": "https://api.acoustid.org/v2/lookup"

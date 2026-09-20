@@ -42,7 +42,8 @@ class YouTubeDownloader:
         self.session.headers["User-Agent"] = self.UA
         self.session.timeout = 120
         configure_session_proxy(self.session)
-        self.cobalt_endpoints = ["https://api.qwkuns.me"]
+        self.spotubedl_base = (provider_overrides().get("youtube_spotubedl") or [""])[0]
+        self.cobalt_endpoints = []
         try:
             overrides = provider_overrides()
             preferred = list(overrides.get("youtube_cobalt", []) or []) + self.cobalt_endpoints
@@ -534,7 +535,7 @@ class YouTubeDownloader:
         """Try SpotubeDL proxy engines for an MP3 download URL."""
         for engine in ("v1", "v3", "v2"):
             api_url = (
-                f"https://spotubedl.com/api/download/{video_id}"
+                f"{self.spotubedl_base}/api/download/{video_id}"
                 f"?engine={engine}&format=mp3&quality=320"
             )
             try:
@@ -544,7 +545,7 @@ class YouTubeDownloader:
                     dl = data.get("url", "")
                     if dl:
                         if dl.startswith("/"):
-                            dl = "https://spotubedl.com" + dl
+                            dl = self.spotubedl_base + dl
                         return dl
             except Exception:
                 continue

@@ -18,7 +18,7 @@ CACHE_FILE = REPO_ROOT / ".upstream-proxy-registry.json"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from backend.upstream_proxy_registry import _fetch_upstream_registry  # noqa: E402, SLF001
+from backend.upstream_proxy_registry import _fetch_upstream_registry, _merge_registries  # noqa: E402, SLF001
 
 
 def load_existing_registry() -> dict:
@@ -36,24 +36,33 @@ def load_existing_registry() -> dict:
     return {}
 
 
-def write_cache(registry: dict) -> None:
+def load_existing_payload() -> dict:
+    try:
+        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_cache(registry: dict, cached: dict) -> None:
     payload = {
         "_fetched_at": int(time.time()),
-        "registry": registry,
+        "registry": _merge_registries(registry, cached.get("registry", cached)),
     }
     CACHE_FILE.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main() -> int:
+    cached = load_existing_payload()
     current = load_existing_registry()
     upstream = _fetch_upstream_registry()
+    merged = _merge_registries(upstream, current)
 
-    if current == upstream:
+    if current == merged:
         print("SYNC_CHANGED=0")
         print("Proxy registry unchanged")
         return 0
 
-    write_cache(upstream)
+    write_cache(upstream, cached)
     print("SYNC_CHANGED=1")
     print("Proxy registry updated")
     return 0

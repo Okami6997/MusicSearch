@@ -2040,7 +2040,7 @@
         btn.disabled = true;
         btn.textContent = "Syncing...";
         try {
-            const resp = await fetch("/api/proxies/dispatch", {
+            const resp = await fetch("/api/proxies/refresh", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
             });
@@ -2048,7 +2048,7 @@
             if (!resp.ok || data.error) {
                 throw new Error(data.error || "Failed to trigger proxy sync");
             }
-            toast(`Proxy sync dispatched for ${data.target_repo}`, "success");
+            toast(`Proxy registry updated from ${data.registry_repo}`, "success");
         } catch (e) {
             toast(e.message || "Failed to trigger proxy sync", "error");
         } finally {

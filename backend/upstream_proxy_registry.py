@@ -85,6 +85,15 @@ def _save_cache(payload: dict) -> None:
                 pass
 
 
+def _merge_registries(upstream: dict, cached: dict) -> dict:
+    """Keep locally curated fallback endpoints alongside upstream values."""
+    merged = dict(upstream) if isinstance(upstream, dict) else {}
+    cached_fallbacks = cached.get("fallbacks") if isinstance(cached, dict) else None
+    if isinstance(cached_fallbacks, dict):
+        merged["fallbacks"] = cached_fallbacks
+    return merged
+
+
 def load_registry(force_refresh: bool = False) -> tuple[dict, str]:
     """Return (registry, source) where source is 'remote' or 'cache'."""
     now = int(time.time())
@@ -95,7 +104,7 @@ def load_registry(force_refresh: bool = False) -> tuple[dict, str]:
         return cached.get("registry", {}), "cache"
 
     try:
-        registry = _fetch_upstream_registry()
+        registry = _merge_registries(_fetch_upstream_registry(), cached.get("registry", {}))
         _save_cache({"_fetched_at": now, "registry": registry})
         return registry, "remote"
     except Exception:
@@ -131,6 +140,7 @@ def provider_overrides() -> dict:
     """Build endpoint overrides consumed by downloader classes."""
     registry, _ = load_registry(force_refresh=False)
 
+    fallbacks = registry.get("fallbacks") or {}
     tidal_post = list((registry.get("tidal") or {}).get("post") or [])
     tidal_stream = list((registry.get("tidal") or {}).get("stream") or [])
 
@@ -152,19 +162,29 @@ def provider_overrides() -> dict:
     ]
 
     return {
-        "tidal_post": [u for u in tidal_post if isinstance(u, str) and u],
-        "tidal_stream": [u for u in tidal_stream if isinstance(u, str) and u],
-        "qobuz_stream": [u for u in qobuz_stream if isinstance(u, str) and u],
-        "qobuz_dl": [u for u in qobuz_dl if isinstance(u, str) and u],
-        "qobuz_post": [u for u in qobuz_post if isinstance(u, str) and u],
-        "deezer_api_candidates": [u for u in deezer_api_candidates if isinstance(u, str) and u],
-        "amazon_api_bases": [u for u in amazon_api_bases if isinstance(u, str) and u],
-        "youtube_cobalt": [
-            u
-            for u in list((registry.get("youtube") or {}).get("cobalt") or [])
+        "tidal_post": _proxy_values(fallbacks, "tidal_post") + [u for u in tidal_post if isinstance(u, str) and u],
+        "tidal_stream": _proxy_values(fallbacks, "tidal_stream") + [u for u in tidal_stream if isinstance(u, str) and u],
+        "qobuz_stream": _proxy_values(fallbacks, "qobuz_stream") + [u for u in qobuz_stream if isinstance(u, str) and u],
+        "qobuz_dl": _proxy_values(fallbacks, "qobuz_dl") + [u for u in qobuz_dl if isinstance(u, str) and u],
+        "qobuz_post": _proxy_values(fallbacks, "qobuz_post") + [u for u in qobuz_post if isinstance(u, str) and u],
+        "deezer_api_candidates": _proxy_values(fallbacks, "deezer_api_candidates") + [u for u in deezer_api_candidates if isinstance(u, str) and u],
+        "amazon_api_bases": _proxy_values(fallbacks, "amazon_api_bases") + [u for u in amazon_api_bases if isinstance(u, str) and u],
+        "youtube_cobalt": _proxy_values(fallbacks, "youtube_cobalt") + [
+            u for u in list((registry.get("youtube") or {}).get("cobalt") or [])
             if isinstance(u, str) and u
         ],
+        "spotify_session": _proxy_values(fallbacks, "spotify_session"),
+        "spotify_token": _proxy_values(fallbacks, "spotify_token"),
+        "spotify_download": _proxy_values(fallbacks, "spotify_download"),
+        "youtube_spotubedl": _proxy_values(fallbacks, "youtube_spotubedl"),
     }
+
+
+def _proxy_values(fallbacks: dict, key: str) -> list[str]:
+    values = fallbacks.get(key, []) if isinstance(fallbacks, dict) else []
+    if isinstance(values, str):
+        values = [values]
+    return [value for value in values if isinstance(value, str) and value]
 
 
 def merge_proxy_list(existing: list[str], preferred: list[str]) -> list[str]:

@@ -34,11 +34,7 @@ def _get_aesgcm_class():
 class AmazonDownloader:
     """Download tracks from Amazon Music via API proxy."""
 
-    API_BASES = [
-        "https://amz.spotbye.qzz.io/api",
-        "https://amazon.spotbye.qzz.io/api",
-        "https://amzn.afkarxyz.qzz.io/api",
-    ]
+    API_BASES = []
 
     _DEBUG_KEY_SEED = b"spotif" + b"lac:am" + b"azon:spotbye:api:v1"
     _DEBUG_KEY_AAD = bytes([

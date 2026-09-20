@@ -1927,7 +1927,8 @@ def refresh_proxies():
     """Manually refresh provider proxies from the upstream SpotiFLAC registry."""
     try:
         summary = refresh_registry()
-        download_manager.reload_provider_clients()
+        if download_manager:
+            download_manager.reload_provider_clients()
         return jsonify({
             **summary,
             "reloaded": True,
@@ -1958,7 +1959,8 @@ def webhook_spotiflac_proxies():
 
     try:
         summary = refresh_registry()
-        download_manager.reload_provider_clients()
+        if download_manager:
+            download_manager.reload_provider_clients()
         return jsonify({
             **summary,
             "event": event,
@@ -2040,6 +2042,18 @@ def webhook_spotiflac_dispatch():
 
 @app.route("/api/proxies/dispatch", methods=["POST"])
 def dispatch_proxy_sync():
+    """Refresh the shared proxy registry file from the upstream GitHub registry."""
+    try:
+        summary = refresh_registry()
+        if download_manager:
+            download_manager.reload_provider_clients()
+        return jsonify({**summary, "reloaded": bool(download_manager)})
+    except Exception as e:
+        return jsonify({"error": f"proxy refresh failed: {str(e)}"}), 500
+
+
+@app.route("/api/proxies/github-dispatch", methods=["POST"])
+def dispatch_proxy_sync_legacy():
     """Manually trigger GitHub repository_dispatch for proxy sync workflow."""
     dispatch_repo = os.environ.get("SPOTIFLAC_DISPATCH_TARGET_REPO", "Okami6997/MusicSearch").strip()
     dispatch_token = _get_dispatch_token()

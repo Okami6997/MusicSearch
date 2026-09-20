@@ -54,10 +54,7 @@ class TidalSearchClient:
         self.session = requests.Session()
         self.session.headers["User-Agent"] = self.UA
         configure_session_proxy(self.session)
-        self.APIS = [
-            "https://hifi-one.spotisaver.net",
-            "https://hifi-two.spotisaver.net",
-        ]
+        self.APIS = []
         try:
             overrides = provider_overrides()
             self.APIS = merge_proxy_list(self.APIS, overrides.get("tidal_stream", []))
@@ -204,23 +201,7 @@ class TidalDownloader:
 
     API_TIMEOUT = 6
 
-    APIS = [
-        "https://api.zarz.moe/v1/dl/tid2",
-        "https://eu-central.monochrome.tf",
-        "https://us-west.monochrome.tf",
-        "https://api.monochrome.tf",
-        "https://monochrome-api.samidy.com",
-        "https://tidal-api.binimum.org",
-        "https://tidal.kinoplus.online",
-        "https://triton.squid.wtf",
-        "https://vogel.qqdl.site",
-        "https://maus.qqdl.site",
-        "https://hund.qqdl.site",
-        "https://katze.qqdl.site",
-        "https://wolf.qqdl.site",
-        "https://hifi-one.spotisaver.net",
-        "https://hifi-two.spotisaver.net",
-    ]
+    APIS = []
     UA = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "

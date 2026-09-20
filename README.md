@@ -98,6 +98,12 @@ Provider endpoint pools for Tidal/Qobuz/Amazon/Deezer can now be synced from the
 
 - `https://github.com/BartolomeoRusso9/SpotiFLAC-Module-Version`
 
+All provider proxy endpoints, including local fallback pools, are stored in
+`.upstream-proxy-registry.json`. Provider clients read their endpoint
+properties from that file at startup; refreshes update the file atomically and
+hot-reload the clients. The **Sync Proxies Now** button in Settings uses the
+same refresh path.
+
 Manual refresh endpoint:
 
 - `POST /api/proxies/refresh`

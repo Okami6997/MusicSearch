@@ -53,26 +53,9 @@ class QobuzDownloader:
         r'app_id:"(?P<app_id>\d{9})",app_secret:"(?P<app_secret>[a-f0-9]{32})"'
     )
 
-    APIS = [
-        "https://dab.yeet.su/api/stream?trackId=",
-        "https://dabmusic.xyz/api/stream?trackId=",
-        "https://qbz.afkarxyz.qzz.io/api/track/",
-        "https://qobuz.spotbye.qzz.io/api/track/",
-        "https://qobuz.squid.wtf/api/download-music?country=US&track_id=",
-        "https://dl.musicdl.me/qobuz/download",
-        "https://api.zarz.moe/dl/qbz",
-        "https://api.zarz.moe/v1/dl/qbz",
-        "https://api.zarz.moe/v1/dl/qbz2",
-        "https://www.musicdl.me/api/qobuz/download",
-    ]
+    APIS = []
 
-    MUSICDL_APIS = {
-        "https://www.musicdl.me/api/qobuz/download",
-        "https://dl.musicdl.me/qobuz/download",
-        "https://api.zarz.moe/dl/qbz",
-        "https://api.zarz.moe/v1/dl/qbz",
-        "https://api.zarz.moe/v1/dl/qbz2",
-    }
+    MUSICDL_APIS = set()
 
     QUALITY_FALLBACK = {
         "27": ["27", "7", "6"],
