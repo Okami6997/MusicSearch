@@ -1,5 +1,5 @@
 {
-  "_fetched_at": 1790355834,
+  "_fetched_at": 1790387932,
   "registry": {
     "acoustid": {
       "client": "bDjK6RXxPL",
@@ -112,7 +112,7 @@
       "wjhe_stream": "https://music.wjhe.top/api/music/migu/url"
     },
     "monochrome-token": {
-      "token": "Bearer eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwic2NvcGUiOiIiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzNTU3LCJhdCI6IklOVEVSTkFMIiwiZXhwIjoxNzkwMzY4OTYzLCJpc3MiOiJodHRwczovL2F1dGgudGlkYWwuY29tL3YxIn0.hc47Bu3a7kadpF9sOVK-5e2VEGK1xO4aX6zIcyVzaYwXr-7cb9gNMDEmCoa5z42Tn7HMi2mOBoZq-bwHc9R9DA"
+      "token": "Bearer eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwic2NvcGUiOiIiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzNTU3LCJhdCI6IklOVEVSTkFMIiwiZXhwIjoxNzkwMzk2Nzc0LCJpc3MiOiJodHRwczovL2F1dGgudGlkYWwuY29tL3YxIn0.kuKou4PYDaWfPaJ2u4Mzr6tEeohBmevOPwbpfxU7V-WOpw1T5mGh7d664RVYFnka5qoRAUJ7eTppne4PHbO-dw"
     },
     "netease": {
       "gdstudio": "https://music-api.gdstudio.xyz/api.php"
@@ -143,12 +143,14 @@
       "cobalt": "https://api.zarz.moe/v1/dl/cobalt/"
     },
     "tidal": {
+      "api_key_kanji": "hifi_b5ac66bc7e43c5b4e33037bcc945ee99b00985a4d8b5b1c0",
       "community": "https://tdl-oss.spotbye.qzz.io/api/dl",
       "post": [
         "https://api.zarz.moe/v1/dl/tid2"
       ],
       "stream": [
-        "https://tidal.anandserver.cfd"
+        "https://tidal.anandserver.cfd",
+        "https://tidal.kanjijewels.com"
       ]
     },
     "youtube": {
