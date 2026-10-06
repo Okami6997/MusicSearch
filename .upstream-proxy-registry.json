@@ -1,5 +1,5 @@
 {
-  "_fetched_at": 1791192962,
+  "_fetched_at": 1791271436,
   "registry": {
     "acoustid": {
       "client": "bDjK6RXxPL",
@@ -112,7 +112,7 @@
       "wjhe_stream": "https://music.wjhe.top/api/music/migu/url"
     },
     "monochrome-token": {
-      "token": "Bearer eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwic2NvcGUiOiIiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzNTU3LCJhdCI6IklOVEVSTkFMIiwiZXhwIjoxNzkxMTg4NzQ2LCJpc3MiOiJodHRwczovL2F1dGgudGlkYWwuY29tL3YxIn0.W1gMzY4AVzvwY_K4sL-mTSCj8iDJ0SqBMtWc1Fgz5W9oH1VfKs_IsQKZcaQOrc34KNNVoYzR2knzJmWBcCYfog"
+      "token": "Bearer eyJraWQiOiJ2OU1GbFhqWSIsImFsZyI6IkVTMjU2In0.eyJ0eXBlIjoibzJfYWNjZXNzIiwic2NvcGUiOiIiLCJnVmVyIjowLCJzVmVyIjowLCJjaWQiOjEzNTU3LCJhdCI6IklOVEVSTkFMIiwiZXhwIjoxNzkxMjc3OTUzLCJpc3MiOiJodHRwczovL2F1dGgudGlkYWwuY29tL3YxIn0.3k4nqjDcg-MnebvJqQcZY93aJayF1yNLj-Zu-cJ7V0yTsSVibf3lp-yrK1mInVvTDdAkXv0wDr8zamPUpL2DBQ"
     },
     "netease": {
       "gdstudio": "https://music-api.gdstudio.xyz/api.php"
